@@ -48,6 +48,11 @@
                     </div>
                 </div>
                 <div class="block__body">
+                    <div id="spriteFilter" class="sprite-filter" hidden>
+                        <input id="spriteSearch" class="field__input field__input--sm" type="search"
+                               placeholder="搜索角色名…" autocomplete="off">
+                        <div id="spriteCats" class="sprite-cats"></div>
+                    </div>
                     <div id="assetGrid" class="asset-grid"></div>
                 </div>
             </section>

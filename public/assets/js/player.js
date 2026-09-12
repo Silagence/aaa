@@ -170,6 +170,7 @@
         var img = new Image();
         img.src = assetSrc(a);
         img.alt = a.name || '';
+        img.draggable = false;
         div.appendChild(img);
         layer.appendChild(div);
         // 新立绘需按当前说话角色立即应用高亮/变暗状态
@@ -582,8 +583,21 @@
         bindSettings();
     }
 
+    // ============ 素材防下载（轻量） ============
+    // 仅提高普通用户的下载门槛：禁用图片右键菜单与拖拽。
+    // 注意：浏览器能渲染的图片必然可被获取，此措施无法阻止有技术手段的用户。
+    function guardAssets() {
+        document.addEventListener('contextmenu', function (e) {
+            if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+        });
+        document.addEventListener('dragstart', function (e) {
+            if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+        });
+    }
+
     // ============ 启动 ============
     function init() {
+        guardAssets();
         loadCfg();
         bindSettings();
         if (!loadWork()) return;

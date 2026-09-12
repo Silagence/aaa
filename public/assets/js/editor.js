@@ -38,7 +38,10 @@
         work: null,
         selectedSceneId: null,
         selectedNodeIndex: -1,
-        activeAssetTab: 'bg'
+        activeAssetTab: 'bg',
+        spriteKeyword: '',
+        spriteCategory: '全部',
+        spriteCharacter: null
     };
 
     function newWork() {
@@ -179,38 +182,241 @@
     }
 
     // ============ 渲染：素材库 ============
+    // 立绘采用"角色列表 → 立绘详情"两级导航：
+    // 角色数量可能达数百，平铺渲染会创建上千 DOM 节点导致卡顿，
+    // 因此第一级只渲染角色卡片（数量级为角色数），进入角色后才渲染其立绘。
+    function spriteCategories() {
+        var seen = {}, out = [];
+        state.assets.sprites.forEach(function (a) {
+            var c = a.category || '其他';
+            if (!seen[c]) { seen[c] = true; out.push(c); }
+        });
+        return out;
+    }
+
+    // 按 类型 → 角色 聚合，返回角色数组
+    function buildCharacterList() {
+        var map = {}, out = [];
+        state.assets.sprites.forEach(function (a) {
+            var cat = a.category || '其他';
+            var ch = a.character || '未设置角色';
+            var key = cat + '\u0000' + ch;
+            if (!map[key]) {
+                map[key] = { category: cat, character: ch, items: [] };
+                out.push(map[key]);
+            }
+            map[key].items.push(a);
+        });
+        return out;
+    }
+
+    function renderSpriteFilter() {
+        var box = $('spriteCats');
+        box.innerHTML = '';
+        var cats = ['全部'].concat(spriteCategories());
+        cats.forEach(function (c) {
+            var b = el('button', 'sprite-cat' + (c === state.spriteCategory ? ' is-active' : ''), escapeHtml(c));
+            b.type = 'button';
+            b.addEventListener('click', function () {
+                state.spriteCategory = c;
+                state.spriteCharacter = null;   // 切换类型时退回角色列表
+                renderAssetGrid();
+            });
+            box.appendChild(b);
+        });
+    }
+
     function renderAssetGrid() {
         var grid = $('assetGrid');
+        hidePreview();
         grid.innerHTML = '';
+        var isSprite = (state.activeAssetTab === 'sprite');
+        $('spriteFilter').hidden = !isSprite;
+
+        if (isSprite) {
+            renderSpriteFilter();
+            renderSpritePanel(grid);
+            return;
+        }
+
         var list = assetListByTab(state.activeAssetTab);
         if (!list.length) {
             grid.appendChild(el('p', 'placeholder', '此分类暂无素材'));
             return;
         }
         list.forEach(function (item) {
-            var isAudio = (state.activeAssetTab === 'bgm' || state.activeAssetTab === 'sfx');
-            var card = el('div', 'asset-item' + (isAudio ? ' asset-item--audio' : ''));
-            var thumb = el('div', 'asset-item__thumb');
-            if (isAudio) {
-                thumb.textContent = '♪';
-            } else {
-                var img = document.createElement('img');
-                img.src = 'assets/' + item.thumb;
-                img.alt = item.name;
-                img.loading = 'lazy';
-                thumb.appendChild(img);
-            }
-            var name = el('div', 'asset-item__name', escapeHtml(item.name));
+            grid.appendChild(buildAssetCard(item, state.activeAssetTab === 'bgm' || state.activeAssetTab === 'sfx'));
+        });
+    }
+
+    // 立绘面板：根据是否已选中角色，渲染角色列表或立绘详情
+    function renderSpritePanel(grid) {
+        var chars = buildCharacterList();
+        var kw = (state.spriteKeyword || '').trim().toLowerCase();
+
+        // 类型筛选
+        if (state.spriteCategory !== '全部') {
+            chars = chars.filter(function (c) { return c.category === state.spriteCategory; });
+        }
+        // 角色名搜索
+        if (kw) {
+            chars = chars.filter(function (c) {
+                return c.character.toLowerCase().indexOf(kw) >= 0 ||
+                       c.category.toLowerCase().indexOf(kw) >= 0;
+            });
+        }
+
+        // 已选中角色 → 立绘详情
+        if (state.spriteCharacter) {
+            var cur = null;
+            chars.forEach(function (c) {
+                if (c.character === state.spriteCharacter.character &&
+                    c.category === state.spriteCharacter.category) cur = c;
+            });
+            if (cur) { renderSpriteDetail(grid, cur); return; }
+            state.spriteCharacter = null;   // 角色被筛掉则退回列表
+        }
+
+        // 角色列表
+        if (!chars.length) {
+            grid.appendChild(el('p', 'placeholder', '没有匹配的角色'));
+            return;
+        }
+        var bar = el('div', 'sprite-result-bar');
+        bar.appendChild(el('span', 'sprite-result-bar__text', '共 ' + chars.length + ' 个角色'));
+        grid.appendChild(bar);
+
+        chars.forEach(function (c) {
+            var card = el('div', 'char-item');
+            var thumb = el('div', 'char-item__thumb');
+            var img = document.createElement('img');
+            img.src = 'assets/' + c.items[0].thumb;
+            img.alt = c.character;
+            img.loading = 'lazy';
+            img.draggable = false;
+            thumb.appendChild(img);
             card.appendChild(thumb);
-            card.appendChild(name);
-            // 立绘展示 character 值，方便用户在"说话角色"里填写
-            if (state.activeAssetTab === 'sprite') {
-                card.appendChild(el('div', 'asset-item__char',
-                    item.character ? '角色：' + escapeHtml(item.character) : '角色：未设置'));
-            }
-            card.addEventListener('click', function () { onAssetClick(item); });
+            // 悬停预览该角色的首张立绘
+            thumb.addEventListener('mouseenter', function () {
+                showPreview('assets/' + c.items[0].src, c.character, card);
+            });
+            thumb.addEventListener('mouseleave', hidePreview);
+
+            var info = el('div', 'char-item__info');
+            info.appendChild(el('div', 'char-item__name', escapeHtml(c.character)));
+            info.appendChild(el('div', 'char-item__meta',
+                escapeHtml(c.category) + ' · ' + c.items.length + ' 张'));
+            card.appendChild(info);
+
+            card.addEventListener('click', function () {
+                state.spriteCharacter = { character: c.character, category: c.category };
+                renderAssetGrid();
+            });
             grid.appendChild(card);
         });
+    }
+
+    // 单个角色的立绘详情
+    function renderSpriteDetail(grid, c) {
+        var back = el('button', 'sprite-back', '← 返回角色列表');
+        back.type = 'button';
+        back.addEventListener('click', function () {
+            state.spriteCharacter = null;
+            renderAssetGrid();
+        });
+        grid.appendChild(back);
+
+        var bar = el('div', 'sprite-result-bar');
+        bar.appendChild(el('span', 'sprite-group__cat', escapeHtml(c.category)));
+        bar.appendChild(el('span', 'sprite-group__char', escapeHtml(c.character)));
+        bar.appendChild(el('span', 'sprite-result-bar__text', c.items.length + ' 张立绘'));
+        grid.appendChild(bar);
+
+        var g = el('div', 'asset-grid');
+        c.items.forEach(function (item) { g.appendChild(buildAssetCard(item, false)); });
+        grid.appendChild(g);
+    }
+
+    // ============ 素材悬停预览 ============
+    // 鼠标悬停在缩略图上时，在光标旁浮出完整图片。
+    // 用单个复用的浮层元素，避免为每张卡片创建 DOM。
+    var previewEl = null;
+
+    function ensurePreviewEl() {
+        if (previewEl) return previewEl;
+        previewEl = el('div', 'asset-preview');
+        previewEl.hidden = true;
+        var img = document.createElement('img');
+        img.draggable = false;
+        img.alt = '';
+        previewEl.appendChild(img);
+        previewEl.appendChild(el('div', 'asset-preview__name'));
+        document.body.appendChild(previewEl);
+        return previewEl;
+    }
+
+    function showPreview(src, name, anchor) {
+        var box = ensurePreviewEl();
+        var img = box.querySelector('img');
+        if (img.getAttribute('src') !== src) img.src = src;
+        box.querySelector('.asset-preview__name').textContent = name || '';
+        box.hidden = false;
+        positionPreview(anchor);
+        // 图片未加载完时 offsetHeight 偏小，会导致定位溢出视口；
+        // 加载完成后重新定位一次（已缓存的图片 complete 为 true，不会重复触发）。
+        if (!img.complete) {
+            img.onload = function () { positionPreview(anchor); };
+        }
+    }
+
+    function positionPreview(anchor) {
+        if (!previewEl || previewEl.hidden) return;
+        var r = anchor.getBoundingClientRect();
+        var pw = previewEl.offsetWidth;
+        var ph = previewEl.offsetHeight;
+        // 优先显示在卡片右侧，空间不足则显示在左侧
+        var left = r.right + 12;
+        if (left + pw > window.innerWidth - 8) left = r.left - pw - 12;
+        if (left < 8) left = 8;
+        var top = r.top;
+        if (top + ph > window.innerHeight - 8) top = window.innerHeight - ph - 8;
+        if (top < 8) top = 8;
+        previewEl.style.left = left + 'px';
+        previewEl.style.top = top + 'px';
+    }
+
+    function hidePreview() {
+        if (previewEl) previewEl.hidden = true;
+    }
+
+    // 构建单个素材卡片
+    function buildAssetCard(item, isAudio) {
+        var card = el('div', 'asset-item' + (isAudio ? ' asset-item--audio' : ''));
+        var thumb = el('div', 'asset-item__thumb');
+        if (isAudio) {
+            thumb.textContent = '♪';
+        } else {
+            var img = document.createElement('img');
+            img.src = 'assets/' + item.thumb;
+            img.alt = item.name;
+            img.loading = 'lazy';
+            img.draggable = false;
+            thumb.appendChild(img);
+            // 悬停预览完整图片
+            thumb.addEventListener('mouseenter', function () {
+                showPreview('assets/' + item.src, item.name, card);
+            });
+            thumb.addEventListener('mouseleave', hidePreview);
+        }
+        card.appendChild(thumb);
+        card.appendChild(el('div', 'asset-item__name', escapeHtml(item.name)));
+        // 立绘展示 character 值，方便用户在"说话角色"里填写
+        if (state.activeAssetTab === 'sprite') {
+            card.appendChild(el('div', 'asset-item__char',
+                item.character ? '角色：' + escapeHtml(item.character) : '角色：未设置'));
+        }
+        card.addEventListener('click', function () { onAssetClick(item); });
+        return card;
     }
 
     // 点击素材 → 在当前场景插入对应节点
@@ -285,6 +491,26 @@
         return '';
     }
 
+    // 背景/立绘节点的缩略图；其他类型或未指定素材时返回 null
+    function buildNodeThumb(node) {
+        if (node.type !== 'bg' && node.type !== 'sprite') return null;
+        var a = findAsset(node.type, node.ref);
+        if (!a) return null;
+        var box = el('div', 'node__thumb');
+        var img = document.createElement('img');
+        img.src = 'assets/' + a.thumb;
+        img.alt = a.name || '';
+        img.loading = 'lazy';
+        img.draggable = false;
+        box.appendChild(img);
+        // 悬停预览完整图片
+        box.addEventListener('mouseenter', function () {
+            showPreview('assets/' + a.src, a.name, box);
+        });
+        box.addEventListener('mouseleave', hidePreview);
+        return box;
+    }
+
     function renderNodeList() {
         var box = $('nodeList');
         box.innerHTML = '';
@@ -305,6 +531,9 @@
             var card = el('div', 'node node--' + node.type +
                 (i === state.selectedNodeIndex ? ' is-selected' : ''));
             card.appendChild(el('div', 'node__index', String(i + 1)));
+            // 背景/立绘节点展示素材缩略图
+            var thumb = buildNodeThumb(node);
+            if (thumb) card.appendChild(thumb);
             var body = el('div', 'node__body');
             body.appendChild(el('div', 'node__type', NODE_LABELS[node.type] || node.type));
             body.appendChild(el('div', 'node__title', nodeTitle(node)));
@@ -813,6 +1042,12 @@
             renderAssetGrid();
         });
 
+        // 立绘搜索（按角色名/立绘名过滤）
+        $('spriteSearch').addEventListener('input', function () {
+            state.spriteKeyword = this.value;
+            renderAssetGrid();
+        });
+
         // 场景
         $('btnAddScene').addEventListener('click', addScene);
         $('btnDelScene').addEventListener('click', delScene);
@@ -851,7 +1086,20 @@
         }
     }
 
+    // ============ 素材防下载（轻量） ============
+    // 仅提高普通用户的下载门槛：禁用图片右键菜单与拖拽。
+    // 注意：浏览器能渲染的图片必然可被获取，此措施无法阻止有技术手段的用户。
+    function guardAssets() {
+        document.addEventListener('contextmenu', function (e) {
+            if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+        });
+        document.addEventListener('dragstart', function (e) {
+            if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+        });
+    }
+
     function init() {
+        guardAssets();
         // 加载草稿或新建
         var draft = loadDraft();
         state.work = draft || newWork();

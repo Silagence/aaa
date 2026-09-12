@@ -3,13 +3,49 @@
   "backgrounds": [
     { "id": "classroom_day", "name": "教室·白天", "src": "bg/classroom_day.svg", "thumb": "bg/classroom_day.svg" },
     { "id": "forest_night", "name": "森林·夜晚", "src": "bg/forest_night.svg", "thumb": "bg/forest_night.svg" },
-    { "id": "street_dusk", "name": "街道·黄昏", "src": "bg/street_dusk.svg", "thumb": "bg/street_dusk.svg" }
+    { "id": "street_dusk", "name": "街道·黄昏", "src": "bg/street_dusk.svg", "thumb": "bg/street_dusk.svg" },
+    { "id": "gretel_crown", "name": "格蕾特 皇冠", "src": "bg/Gretel_Crown.png", "thumb": "bg/Gretel_Crown.png" }
   ],
   "sprites": [
-    { "id": "alice_smile", "name": "爱丽丝·微笑", "src": "sprites/alice_smile.svg", "thumb": "sprites/alice_smile.svg", "character": "alice" },
-    { "id": "alice_think", "name": "爱丽丝·思考", "src": "sprites/alice_think.svg", "thumb": "sprites/alice_think.svg", "character": "alice" },
-    { "id": "bob_neutral", "name": "Bob·平静", "src": "sprites/bob_neutral.svg", "thumb": "sprites/bob_neutral.svg", "character": "bob" }
- ],
+    { "id": "alice_smile", "name": "爱丽丝·微笑", "src": "sprites/alice_smile.svg", "thumb": "sprites/alice_smile.svg", "category": "其他", "character": "alice" },
+    { "id": "alice_think", "name": "爱丽丝·思考", "src": "sprites/alice_think.svg", "thumb": "sprites/alice_think.svg", "category": "其他", "character": "alice" },
+    { "id": "bob_neutral", "name": "Bob·平静", "src": "sprites/bob_neutral.svg", "thumb": "sprites/bob_neutral.svg", "category": "其他", "character": "bob" },
+
+    { "id": "ARM10010101_Normal", "name": "KV-1 · ARM10010101 Normal", "src": "sprites/DOLLS/KV-1/ARM10010101_Normal.png", "thumb": "sprites/DOLLS/KV-1/ARM10010101_Normal.png", "category": "DOLLS", "character": "KV-1" },
+    { "id": "ARM10010101_Battle", "name": "KV-1 · ARM10010101 Battle", "src": "sprites/DOLLS/KV-1/ARM10010101_Battle.png", "thumb": "sprites/DOLLS/KV-1/ARM10010101_Battle.png", "category": "DOLLS", "character": "KV-1" },
+    { "id": "ARM10010201_Normal", "name": "KV-1 · ARM10010201 Normal", "src": "sprites/DOLLS/KV-1/ARM10010201_Normal.png", "thumb": "sprites/DOLLS/KV-1/ARM10010201_Normal.png", "category": "DOLLS", "character": "KV-1" },
+    { "id": "ARM10010201_Battle", "name": "KV-1 · ARM10010201 Battle", "src": "sprites/DOLLS/KV-1/ARM10010201_Battle.png", "thumb": "sprites/DOLLS/KV-1/ARM10010201_Battle.png", "category": "DOLLS", "character": "KV-1" },
+    { "id": "ARM10019001_Normal", "name": "KV-1 · ARM10019001 Normal", "src": "sprites/DOLLS/KV-1/ARM10019001_Normal.png", "thumb": "sprites/DOLLS/KV-1/ARM10019001_Normal.png", "category": "DOLLS", "character": "KV-1" },
+    { "id": "ARM10019001_Battle", "name": "KV-1 · ARM10019001 Battle", "src": "sprites/DOLLS/KV-1/ARM10019001_Battle.png", "thumb": "sprites/DOLLS/KV-1/ARM10019001_Battle.png", "category": "DOLLS", "character": "KV-1" },
+    { "id": "ARM10019002_Normal", "name": "KV-1 · ARM10019002 Normal", "src": "sprites/DOLLS/KV-1/ARM10019002_Normal.png", "thumb": "sprites/DOLLS/KV-1/ARM10019002_Normal.png", "category": "DOLLS", "character": "KV-1" },
+    { "id": "ARM10019002_Battle", "name": "KV-1 · ARM10019002 Battle", "src": "sprites/DOLLS/KV-1/ARM10019002_Battle.png", "thumb": "sprites/DOLLS/KV-1/ARM10019002_Battle.png", "category": "DOLLS", "character": "KV-1" },
+    { "id": "ARM10019003_Normal", "name": "KV-1 · ARM10019003 Normal", "src": "sprites/DOLLS/KV-1/ARM10019003_Normal.png", "thumb": "sprites/DOLLS/KV-1/ARM10019003_Normal.png", "category": "DOLLS", "character": "KV-1" },
+    { "id": "ARM10019003_Battle", "name": "KV-1 · ARM10019003 Battle", "src": "sprites/DOLLS/KV-1/ARM10019003_Battle.png", "thumb": "sprites/DOLLS/KV-1/ARM10019003_Battle.png", "category": "DOLLS", "character": "KV-1" },
+
+    { "id": "ARM10030101_Normal", "name": "鼠式 · ARM10030101 Normal", "src": "sprites/DOLLS/鼠式/ARM10030101_Normal.png", "thumb": "sprites/DOLLS/鼠式/ARM10030101_Normal.png", "category": "DOLLS", "character": "鼠式" },
+    { "id": "ARM10030101_Battle", "name": "鼠式 · ARM10030101 Battle", "src": "sprites/DOLLS/鼠式/ARM10030101_Battle.png", "thumb": "sprites/DOLLS/鼠式/ARM10030101_Battle.png", "category": "DOLLS", "character": "鼠式" },
+    { "id": "ARM10030201_Normal", "name": "鼠式 · ARM10030201 Normal", "src": "sprites/DOLLS/鼠式/ARM10030201_Normal.png", "thumb": "sprites/DOLLS/鼠式/ARM10030201_Normal.png", "category": "DOLLS", "character": "鼠式" },
+    { "id": "ARM10039001_Normal", "name": "鼠式 · ARM10039001 Normal", "src": "sprites/DOLLS/鼠式/ARM10039001_Normal.png", "thumb": "sprites/DOLLS/鼠式/ARM10039001_Normal.png", "category": "DOLLS", "character": "鼠式" },
+    { "id": "ARM10039001_Battle", "name": "鼠式 · ARM10039001 Battle", "src": "sprites/DOLLS/鼠式/ARM10039001_Battle.png", "thumb": "sprites/DOLLS/鼠式/ARM10039001_Battle.png", "category": "DOLLS", "character": "鼠式" },
+    { "id": "ARM10039002_Normal", "name": "鼠式 · ARM10039002 Normal", "src": "sprites/DOLLS/鼠式/ARM10039002_Normal.png", "thumb": "sprites/DOLLS/鼠式/ARM10039002_Normal.png", "category": "DOLLS", "character": "鼠式" },
+    { "id": "ARM10039002_Battle", "name": "鼠式 · ARM10039002 Battle", "src": "sprites/DOLLS/鼠式/ARM10039002_Battle.png", "thumb": "sprites/DOLLS/鼠式/ARM10039002_Battle.png", "category": "DOLLS", "character": "鼠式" },
+    { "id": "ARM10039003_Normal", "name": "鼠式 · ARM10039003 Normal", "src": "sprites/DOLLS/鼠式/ARM10039003_Normal.png", "thumb": "sprites/DOLLS/鼠式/ARM10039003_Normal.png", "category": "DOLLS", "character": "鼠式" },
+    { "id": "ARM10039003_Battle", "name": "鼠式 · ARM10039003 Battle", "src": "sprites/DOLLS/鼠式/ARM10039003_Battle.png", "thumb": "sprites/DOLLS/鼠式/ARM10039003_Battle.png", "category": "DOLLS", "character": "鼠式" },
+
+    { "id": "EMY84131_Texture", "name": "白新娘 · EMY84131", "src": "sprites/ENEMY/白新娘/EMY84131_Texture.png", "thumb": "sprites/ENEMY/白新娘/EMY84131_Texture.png", "category": "ENEMY", "character": "白新娘" },
+    { "id": "EMY84121_Texture", "name": "黑新娘 · EMY84121", "src": "sprites/ENEMY/黑新娘/EMY84121_Texture.png", "thumb": "sprites/ENEMY/黑新娘/EMY84121_Texture.png", "category": "ENEMY", "character": "黑新娘" },
+    { "id": "EMY84122_Texture", "name": "黑新娘 · EMY84122", "src": "sprites/ENEMY/黑新娘/EMY84122_Texture.png", "thumb": "sprites/ENEMY/黑新娘/EMY84122_Texture.png", "category": "ENEMY", "character": "黑新娘" },
+
+    { "id": "NPC0001_Messiah", "name": "弥赛亚 · NPC0001", "src": "sprites/NPC/弥赛亚/NPC0001_Messiah.png", "thumb": "sprites/NPC/弥赛亚/NPC0001_Messiah.png", "category": "NPC", "character": "弥赛亚" },
+    { "id": "NPC0020_Messiah", "name": "弥赛亚 · NPC0020", "src": "sprites/NPC/弥赛亚/NPC0020_Messiah.png", "thumb": "sprites/NPC/弥赛亚/NPC0020_Messiah.png", "category": "NPC", "character": "弥赛亚" },
+    { "id": "NPC0020_Clari01", "name": "弥赛亚 · Clari01", "src": "sprites/NPC/弥赛亚/NPC0020_Clari01.png", "thumb": "sprites/NPC/弥赛亚/NPC0020_Clari01.png", "category": "NPC", "character": "弥赛亚" },
+    { "id": "NPC0020_Clari02", "name": "弥赛亚 · Clari02", "src": "sprites/NPC/弥赛亚/NPC0020_Clari02.png", "thumb": "sprites/NPC/弥赛亚/NPC0020_Clari02.png", "category": "NPC", "character": "弥赛亚" },
+
+    { "id": "NPC0002_Gretel", "name": "格蕾特 · NPC0002", "src": "sprites/NPC/格蕾特/NPC0002_Gretel.png", "thumb": "sprites/NPC/格蕾特/NPC0002_Gretel.png", "category": "NPC", "character": "格蕾特" },
+    { "id": "NPC0002_Gretel_2", "name": "格蕾特 · 立绘2", "src": "sprites/NPC/格蕾特/NPC0002_Gretel_2.png", "thumb": "sprites/NPC/格蕾特/NPC0002_Gretel_2.png", "category": "NPC", "character": "格蕾特" },
+    { "id": "NPC0002_Gretel_3", "name": "格蕾特 · 立绘3", "src": "sprites/NPC/格蕾特/NPC0002_Gretel_3.png", "thumb": "sprites/NPC/格蕾特/NPC0002_Gretel_3.png", "category": "NPC", "character": "格蕾特" },
+    { "id": "NPC0002_Gretel_4", "name": "格蕾特 · 立绘4", "src": "sprites/NPC/格蕾特/NPC0002_Gretel_4.png", "thumb": "sprites/NPC/格蕾特/NPC0002_Gretel_4.png", "category": "NPC", "character": "格蕾特" }
+  ],
   "bgm": [
     { "id": "quiet_theme", "name": "静谧主题", "src": "bgm/quiet_theme.mp3" }
   ],

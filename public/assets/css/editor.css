@@ -152,6 +152,153 @@
     gap: 8px;
 }
 
+/* 立绘筛选：搜索框 + 类型选项卡 */
+.sprite-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.sprite-filter[hidden] { display: none; }
+.field__input--sm {
+    padding: 5px 8px;
+    font-size: 12px;
+}
+.sprite-cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.sprite-cat {
+    padding: 3px 9px;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sprite-cat:hover { color: var(--text-soft); }
+.sprite-cat.is-active {
+    background: rgba(110, 168, 255, 0.18);
+    border-color: rgba(110, 168, 255, 0.4);
+    color: var(--accent);
+}
+
+/* 立绘分组（类型 / 角色） */
+.sprite-group { margin-bottom: 12px; }
+.sprite-group__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 2px 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+}
+.sprite-group__cat {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(110, 168, 255, 0.16);
+    color: var(--accent);
+}
+.sprite-group__char {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-soft);
+}
+.sprite-group__count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* 结果计数条 */
+.sprite-result-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 2px 8px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+}
+.sprite-result-bar__text {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* 返回角色列表 */
+.sprite-back {
+    display: block;
+    width: 100%;
+    padding: 5px 8px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-family: inherit;
+    text-align: left;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+}
+.sprite-back:hover {
+    color: var(--accent);
+    background: rgba(110, 168, 255, 0.12);
+}
+
+/* 角色列表项 */
+.char-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    margin-bottom: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.char-item:hover {
+    background: rgba(110, 168, 255, 0.1);
+    border-color: rgba(110, 168, 255, 0.4);
+}
+.char-item__thumb {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.char-item__thumb img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+.char-item__info { min-width: 0; flex: 1; }
+.char-item__name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.char-item__meta {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
 .asset-item {
     position: relative;
     border: 1px solid var(--border);
@@ -193,6 +340,37 @@
 .asset-item--audio .asset-item__thumb {
     font-size: 24px;
     color: var(--accent);
+}
+
+/* 素材悬停预览浮层 */
+.asset-preview {
+    position: fixed;
+    z-index: 9999;
+    max-width: 320px;
+    padding: 6px;
+    background: rgba(8, 12, 24, 0.96);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+    pointer-events: none;
+}
+.asset-preview[hidden] { display: none; }
+.asset-preview img {
+    display: block;
+    max-width: 308px;
+    max-height: 60vh;
+    object-fit: contain;
+    border-radius: 6px;
+    background: #0a1020;
+}
+.asset-preview__name {
+    padding: 5px 2px 1px;
+    font-size: 11px;
+    color: var(--text-soft);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* ===== 场景列表 ===== */
@@ -322,6 +500,28 @@
     flex-direction: column;
     gap: 4px;
     min-width: 0;
+}
+
+/* 背景/立绘节点缩略图 */
+.node__thumb {
+    flex: 0 0 auto;
+    width: 64px;
+    height: 48px;
+    align-self: center;
+    margin-left: 8px;
+    background: #0a1020;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+/* 用 contain 完整展示图片，避免高瘦立绘被裁切或撑高卡片 */
+.node__thumb img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
 }
 .node__type {
     font-size: 11px;
