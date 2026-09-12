@@ -19,7 +19,7 @@
             case 'sprite': return { type: 'sprite', ref: '', position: 'center', animation: '' };
             case 'bgm':    return { type: 'bgm',    ref: '', loop: true };
             case 'sfx':    return { type: 'sfx',    ref: '' };
-            case 'say':    return { type: 'say',    speaker: '', text: '', voice: '', speed: 30 };
+            case 'say':    return { type: 'say',    speaker: '', text: '', voice: '', speed: 30, speakers: '' };
             case 'choose': return { type: 'choose', options: [{ text: '选项1', next: '' }] };
             case 'var':    return { type: 'var',    set: { affection: '0' } };
             case 'goto':   return { type: 'goto',   next: '' };
@@ -53,6 +53,26 @@
             },
             scenes: []
         };
+    }
+
+    // 新建作品：若当前有未保存改动则二次确认，然后重置为初始状态
+    function newWorkConfirm() {
+        if ($('saveState').classList.contains('is-dirty') &&
+            !window.confirm('当前作品有未保存的修改，确定要新建并清空吗？')) {
+            return;
+        }
+        state.work = newWork();
+        state.selectedSceneId = null;
+        state.selectedNodeIndex = -1;
+        state.activeAssetTab = 'bg';
+        ensureFirstScene();
+        // tabs 高亮复位到"背景"
+        Array.prototype.forEach.call($('assetTabs').children, function (c, i) {
+            c.classList.toggle('is-active', i === 0);
+        });
+        renderAll();
+        saveDraft();
+        toast('已新建作品');
     }
 
     // ============ 工具 ============
@@ -183,6 +203,11 @@
             var name = el('div', 'asset-item__name', escapeHtml(item.name));
             card.appendChild(thumb);
             card.appendChild(name);
+            // 立绘展示 character 值，方便用户在"说话角色"里填写
+            if (state.activeAssetTab === 'sprite') {
+                card.appendChild(el('div', 'asset-item__char',
+                    item.character ? '角色：' + escapeHtml(item.character) : '角色：未设置'));
+            }
             card.addEventListener('click', function () { onAssetClick(item); });
             grid.appendChild(card);
         });
@@ -302,6 +327,32 @@
         });
     }
 
+    // 仅局部更新中栏当前选中节点卡片的标题/副标题。
+    // 用于属性面板输入时同步预览，避免调用 renderAll/renderNodeList
+    // 重建 DOM 而导致正在编辑的输入框失焦或中栏滚动位置跳动。
+    function refreshActiveNodeCard() {
+        var card = document.querySelector('#nodeList .node.is-selected');
+        if (!card) return;
+        var sc = currentScene();
+        if (!sc || state.selectedNodeIndex < 0) return;
+        var node = sc.nodes[state.selectedNodeIndex];
+        if (!node) return;
+        var titleEl = card.querySelector('.node__title');
+        if (titleEl) titleEl.innerHTML = nodeTitle(node);
+        var sub = nodeSub(node);
+        var subEl = card.querySelector('.node__sub');
+        if (sub) {
+            if (subEl) {
+                subEl.innerHTML = sub;
+            } else {
+                var body = card.querySelector('.node__body');
+                if (body) body.appendChild(el('div', 'node__sub', sub));
+            }
+        } else if (subEl) {
+            subEl.parentNode.removeChild(subEl);
+        }
+    }
+
     // ============ 渲染：节点属性卡片 ============
     function renderProps() {
         var panel = $('propsPanel');
@@ -381,7 +432,8 @@
         pos.addEventListener('change', function () { n.position = pos.value; renderAll(); markDirty(); });
         w.appendChild(fieldRow('位置', '')).appendChild(pos);
         var ani = textInput(n.animation || '', '动画 fadeIn/none');
-        ani.addEventListener('input', function () { n.animation = ani.value; renderAll(); markDirty(); });
+        // 输入时仅刷新中栏节点预览，不调用 renderAll，避免属性面板重建导致失焦
+        ani.addEventListener('input', function () { n.animation = ani.value; refreshActiveNodeCard(); markDirty(); });
         w.appendChild(fieldRow('动画', '')).appendChild(ani);
     }
     function bgmFields(w, n) {
@@ -403,12 +455,16 @@
     }
     function sayFields(w, n) {
         var sp = textInput(n.speaker || '', '角色名');
-        sp.addEventListener('input', function () { n.speaker = sp.value; renderAll(); markDirty(); });
+        // 输入时仅局部更新中栏预览，不重建属性面板，避免每输入一个字就失焦
+        sp.addEventListener('input', function () { n.speaker = sp.value; refreshActiveNodeCard(); markDirty(); });
         w.appendChild(fieldRow('说话人', '')).appendChild(sp);
+        var spk = textInput(n.speakers || '', '立绘 character 值，多个用空格分隔；留空表示不变暗任何人');
+        spk.addEventListener('input', function () { n.speakers = spk.value; markDirty(); });
+        w.appendChild(fieldRow('说话角色', '')).appendChild(spk);
         var tx = el('textarea', 'field__input');
         tx.rows = 3; tx.value = n.text || '';
         tx.placeholder = '对话文本';
-        tx.addEventListener('input', function () { n.text = tx.value; renderAll(); markDirty(); });
+        tx.addEventListener('input', function () { n.text = tx.value; refreshActiveNodeCard(); markDirty(); });
         var fr = fieldRow('文本', ''); fr.appendChild(tx); w.appendChild(fr);
         var vc = textInput(n.voice || '', '语音文件（可选）');
         vc.addEventListener('input', function () { n.voice = vc.value; markDirty(); });
@@ -424,7 +480,7 @@
             (n.options || []).forEach(function (opt, idx) {
                 var row = el('div', 'option-row');
                 var t = textInput(opt.text || '', '选项文字');
-                t.addEventListener('input', function () { opt.text = t.value; renderAll(); markDirty(); });
+                t.addEventListener('input', function () { opt.text = t.value; refreshActiveNodeCard(); markDirty(); });
                 var nx = sceneSelect(opt.next || '', true);
                 nx.addEventListener('change', function () { opt.next = nx.value; markDirty(); });
                 var del = el('button', 'option-row__btn', '✕'); del.title = '删除选项';
@@ -616,7 +672,10 @@
             var typeMap = { backgrounds: 'bg', sprites: 'sprite', bgm: 'bgm', sfx: 'sfx' };
             var t = typeMap[k];
             state.assets[k].forEach(function (a) {
-                assets.push({ type: t, id: a.id, src: a.src });
+                var item = { type: t, id: a.id, src: a.src };
+                // 立绘需要带上 character，播放器据此做说话角色高亮/变暗
+                if (a.character) item.character = a.character;
+                assets.push(item);
             });
         });
         return {
@@ -728,6 +787,7 @@
             state.work.manifest.startScene = $('workStartScene').value; markDirty();
         });
 
+        $('btnNewWork').addEventListener('click', newWorkConfirm);
         $('btnImport').addEventListener('click', function () { $('fileImport').click(); });
         $('fileImport').addEventListener('change', function () {
             if (this.files && this.files[0]) onImportFile(this.files[0]);

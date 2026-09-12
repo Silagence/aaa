@@ -166,11 +166,14 @@
         if (existing) existing.remove();
         var div = el('div', 'sprite pos-' + pos);
         div.id = id;
+        div.dataset.character = a.character || '';
         var img = new Image();
         img.src = assetSrc(a);
         img.alt = a.name || '';
         div.appendChild(img);
         layer.appendChild(div);
+        // 新立绘需按当前说话角色立即应用高亮/变暗状态
+        updateSpeakerHighlight(curSpeakers);
         // 触发进入动画
         requestAnimationFrame(function () {
             div.classList.add('is-in');
@@ -202,10 +205,31 @@
     }
 
     // 对话：打字机
+    // 解析 say 节点的 speakers 字段（空格分隔的 character 值）
+    // 命中的立绘保持高亮，其他立绘变暗；speakers 为空则所有立绘恢复正常
+    var curSpeakers = '';
+    function updateSpeakerHighlight(speakers) {
+        curSpeakers = speakers || '';
+        var set = {};
+        if (curSpeakers && typeof curSpeakers === 'string') {
+            curSpeakers.trim().split(/\s+/).forEach(function (s) {
+                if (s) set[s] = true;
+            });
+        }
+        var sprites = $('spriteLayer').querySelectorAll('.sprite');
+        var hasAny = Object.keys(set).length > 0;
+        Array.prototype.forEach.call(sprites, function (spr) {
+            var ch = spr.dataset.character || '';
+            var isSpeaker = hasAny && set[ch];
+            spr.classList.toggle('is-speaker', isSpeaker);
+            spr.classList.toggle('is-dim', hasAny && !isSpeaker);
+        });
+    }
     function startSay(node) {
         var dialog = $('dialog');
         dialog.hidden = false;
         $('dialogSpeaker').textContent = node.speaker || '';
+        updateSpeakerHighlight(node.speakers);
         typingText = node.text || '';
         typingPos = 0;
         isTyping = true;

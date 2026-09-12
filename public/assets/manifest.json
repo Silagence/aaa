@@ -9,7 +9,7 @@
     { "id": "alice_smile", "name": "爱丽丝·微笑", "src": "sprites/alice_smile.svg", "thumb": "sprites/alice_smile.svg", "character": "alice" },
     { "id": "alice_think", "name": "爱丽丝·思考", "src": "sprites/alice_think.svg", "thumb": "sprites/alice_think.svg", "character": "alice" },
     { "id": "bob_neutral", "name": "Bob·平静", "src": "sprites/bob_neutral.svg", "thumb": "sprites/bob_neutral.svg", "character": "bob" }
-  ],
+ ],
   "bgm": [
     { "id": "quiet_theme", "name": "静谧主题", "src": "bgm/quiet_theme.mp3" }
   ],

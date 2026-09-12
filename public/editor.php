@@ -22,6 +22,7 @@
             <a href="index.php" class="topbar__back" title="返回首页">← Asha</a>
             <span class="topbar__sep"></span>
             <input id="workName" class="topbar__title" type="text" value="未命名作品" placeholder="作品名称">
+            <button id="btnNewWork" class="btn btn--ghost btn--sm" type="button" title="新建作品（清空当前编辑器内容）">+ 新建</button>
             <span id="saveState" class="topbar__save">已保存</span>
         </div>
         <div class="topbar__right">

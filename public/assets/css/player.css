@@ -56,9 +56,13 @@
     max-width: 40%;
     object-fit: contain;
     opacity: 0;
-    transition: opacity 0.4s ease, transform 0.4s ease;
+    transition: opacity 0.4s ease, transform 0.4s ease, filter 0.4s ease;
 }
 .sprite.is-in { opacity: 1; }
+/* 说话角色高亮 / 其他角色变暗（dim 规则放最后并提高特异性，确保覆盖 speaker） */
+.sprite.is-speaker { filter: brightness(1.08); }
+.sprite.is-dim,
+.sprite.is-dim.is-speaker { filter: brightness(0.45) saturate(0.7); }
 .sprite.pos-left   { left: 8%;  transform: translateY(10px); }
 .sprite.pos-left.is-in   { transform: translateY(0); }
 .sprite.pos-center { left: 50%; transform: translateX(-50%) translateY(10px); }
