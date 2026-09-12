@@ -340,6 +340,16 @@
 .asset-item--audio .asset-item__thumb {
     font-size: 24px;
     color: var(--accent);
+    cursor: pointer;
+}
+.asset-item--audio .asset-item__thumb:hover {
+    background: rgba(120, 170, 255, 0.12);
+}
+.asset-item--audio.is-playing {
+    border-color: var(--accent);
+}
+.asset-item--audio.is-playing .asset-item__thumb {
+    color: #7ee0a0;
 }
 
 /* 素材悬停预览浮层 */

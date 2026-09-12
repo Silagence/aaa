@@ -389,12 +389,40 @@
         if (previewEl) previewEl.hidden = true;
     }
 
+    // ============ 音频试听 ============
+    // 同一时刻只播放一个音频；再次点击同一素材则停止。
+    var audioEl = null;
+    var audioCard = null;
+
+    function stopAudioPreview() {
+        if (audioEl) { audioEl.pause(); audioEl = null; }
+        if (audioCard) { audioCard.classList.remove('is-playing'); audioCard = null; }
+    }
+
+    function toggleAudioPreview(item, card) {
+        if (audioCard === card) { stopAudioPreview(); return; }
+        stopAudioPreview();
+        var a = new Audio('assets/' + item.src);
+        a.volume = 0.8;
+        a.addEventListener('ended', stopAudioPreview);
+        a.play().catch(function () { toast('无法播放该音频', 'err'); });
+        audioEl = a;
+        audioCard = card;
+        card.classList.add('is-playing');
+    }
+
     // 构建单个素材卡片
     function buildAssetCard(item, isAudio) {
         var card = el('div', 'asset-item' + (isAudio ? ' asset-item--audio' : ''));
         var thumb = el('div', 'asset-item__thumb');
         if (isAudio) {
             thumb.textContent = '♪';
+            thumb.title = '点击试听';
+            // 点击音符试听/停止，不触发插入节点
+            thumb.addEventListener('click', function (e) {
+                e.stopPropagation();
+                toggleAudioPreview(item, card);
+            });
         } else {
             var img = document.createElement('img');
             img.src = 'assets/' + item.thumb;
@@ -461,6 +489,8 @@
     function nodeTitle(node) {
         switch (node.type) {
             case 'bg': case 'sprite': case 'bgm': case 'sfx':
+                var a = findAsset(node.type, node.ref);
+                if (a) return escapeHtml(a.name || a.id);
                 return node.ref ? escapeHtml(node.ref) : '<未指定素材>';
             case 'say':
                 return (node.speaker ? escapeHtml(node.speaker) + '：' : '') +
