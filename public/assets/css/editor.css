@@ -146,11 +146,58 @@
 .tab.is-active { background: rgba(110, 168, 255, 0.18); color: var(--accent); }
 
 /* ===== 素材库 ===== */
+.asset-viewbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+/* 视图切换按钮：图标型，尺寸更紧凑 */
+.tabs--icon .tab {
+    padding: 4px 7px;
+    font-size: 13px;
+    line-height: 1;
+}
+
 .asset-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
 }
+
+/* 列表视图：单列，缩略图与文字横向排列 */
+.asset-grid--list {
+    grid-template-columns: 1fr;
+    gap: 4px;
+}
+.asset-grid--list .asset-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+}
+/* 列表行不做上浮位移，避免行间跳动 */
+.asset-grid--list .asset-item:hover { transform: none; }
+.asset-grid--list .asset-item__thumb {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 32px;
+    aspect-ratio: auto;
+}
+.asset-grid--list .asset-item__thumb img { height: 100%; object-fit: cover; }
+.asset-grid--list .asset-item__name {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    font-size: 12px;
+    text-align: left;
+}
+.asset-grid--list .asset-item__meta {
+    flex: 0 0 auto;
+    padding: 0;
+    text-align: right;
+}
+.asset-grid--list .asset-item__adj { flex: 0 0 auto; margin: 0; }
 
 /* 立绘筛选：搜索框 + 类型选项卡 */
 .sprite-filter {
@@ -329,10 +376,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.asset-item__char {
+.asset-item__meta {
     padding: 0 8px 6px;
     font-size: 10px;
-    color: var(--accent);
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

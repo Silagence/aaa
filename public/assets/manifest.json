@@ -5,7 +5,9 @@
             "id": "bg_BG_MilitaryBase_Red",
             "name": "BG_MilitaryBase_Red",
             "src": "bg/BG_MilitaryBase_Red.png",
-            "thumb": "bg/BG_MilitaryBase_Red.png"
+            "thumb": "bg/BG_MilitaryBase_Red.png",
+            "width": 1024,
+            "height": 576
         }
     ],
     "sprites": [
@@ -15,7 +17,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10010101_Battle.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10010101_Battle.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 903,
+            "height": 943
         },
         {
             "id": "ARM10010101_Normal",
@@ -23,7 +27,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10010101_Normal.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10010101_Normal.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 352,
+            "height": 932
         },
         {
             "id": "ARM10010201_Battle",
@@ -31,7 +37,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10010201_Battle.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10010201_Battle.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 903,
+            "height": 943
         },
         {
             "id": "ARM10010201_Normal",
@@ -39,7 +47,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10010201_Normal.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10010201_Normal.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 352,
+            "height": 932
         },
         {
             "id": "ARM10019001_Battle",
@@ -47,7 +57,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10019001_Battle.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10019001_Battle.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 836,
+            "height": 848
         },
         {
             "id": "ARM10019001_Normal",
@@ -55,7 +67,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10019001_Normal.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10019001_Normal.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 829,
+            "height": 1000
         },
         {
             "id": "ARM10019002_Battle",
@@ -63,7 +77,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10019002_Battle.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10019002_Battle.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 965,
+            "height": 960
         },
         {
             "id": "ARM10019002_Normal",
@@ -71,7 +87,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10019002_Normal.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10019002_Normal.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 439,
+            "height": 911
         },
         {
             "id": "ARM10019003_Battle",
@@ -79,7 +97,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10019003_Battle.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10019003_Battle.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 901,
+            "height": 825
         },
         {
             "id": "ARM10019003_Normal",
@@ -87,7 +107,9 @@
             "src": "sprites/DOLLS/KV-1/ARM10019003_Normal.png",
             "thumb": "sprites/DOLLS/KV-1/ARM10019003_Normal.png",
             "category": "DOLLS",
-            "character": "KV-1"
+            "character": "KV-1",
+            "width": 590,
+            "height": 970
         },
         {
             "id": "sprites_DOLLS_T_34_ARM10090101_Battle",
@@ -95,7 +117,9 @@
             "src": "sprites/DOLLS/T-34/ARM10090101_Battle.png",
             "thumb": "sprites/DOLLS/T-34/ARM10090101_Battle.png",
             "category": "DOLLS",
-            "character": "T-34"
+            "character": "T-34",
+            "width": 488,
+            "height": 682
         },
         {
             "id": "sprites_DOLLS_T_34_ARM10090101_Normal",
@@ -103,7 +127,9 @@
             "src": "sprites/DOLLS/T-34/ARM10090101_Normal.png",
             "thumb": "sprites/DOLLS/T-34/ARM10090101_Normal.png",
             "category": "DOLLS",
-            "character": "T-34"
+            "character": "T-34",
+            "width": 407,
+            "height": 753
         },
         {
             "id": "sprites_DOLLS_T_34_ARM10090201_Battle",
@@ -111,7 +137,9 @@
             "src": "sprites/DOLLS/T-34/ARM10090201_Battle.png",
             "thumb": "sprites/DOLLS/T-34/ARM10090201_Battle.png",
             "category": "DOLLS",
-            "character": "T-34"
+            "character": "T-34",
+            "width": 552,
+            "height": 688
         },
         {
             "id": "sprites_DOLLS_T_34_ARM10090201_Normal",
@@ -119,7 +147,9 @@
             "src": "sprites/DOLLS/T-34/ARM10090201_Normal.png",
             "thumb": "sprites/DOLLS/T-34/ARM10090201_Normal.png",
             "category": "DOLLS",
-            "character": "T-34"
+            "character": "T-34",
+            "width": 448,
+            "height": 765
         },
         {
             "id": "sprites_DOLLS_T_34_ARM10099001_Battle",
@@ -127,7 +157,9 @@
             "src": "sprites/DOLLS/T-34/ARM10099001_Battle.png",
             "thumb": "sprites/DOLLS/T-34/ARM10099001_Battle.png",
             "category": "DOLLS",
-            "character": "T-34"
+            "character": "T-34",
+            "width": 813,
+            "height": 687
         },
         {
             "id": "sprites_DOLLS_T_34_ARM10099001_Normal",
@@ -135,7 +167,9 @@
             "src": "sprites/DOLLS/T-34/ARM10099001_Normal.png",
             "thumb": "sprites/DOLLS/T-34/ARM10099001_Normal.png",
             "category": "DOLLS",
-            "character": "T-34"
+            "character": "T-34",
+            "width": 729,
+            "height": 735
         },
         {
             "id": "sprites_DOLLS_T_34_ARM10099002_Battle",
@@ -143,7 +177,9 @@
             "src": "sprites/DOLLS/T-34/ARM10099002_Battle.png",
             "thumb": "sprites/DOLLS/T-34/ARM10099002_Battle.png",
             "category": "DOLLS",
-            "character": "T-34"
+            "character": "T-34",
+            "width": 831,
+            "height": 831
         },
         {
             "id": "sprites_DOLLS_T_34_ARM10099002_Normal",
@@ -151,7 +187,9 @@
             "src": "sprites/DOLLS/T-34/ARM10099002_Normal.png",
             "thumb": "sprites/DOLLS/T-34/ARM10099002_Normal.png",
             "category": "DOLLS",
-            "character": "T-34"
+            "character": "T-34",
+            "width": 607,
+            "height": 852
         },
         {
             "id": "ARM10030101_Battle",
@@ -159,7 +197,9 @@
             "src": "sprites/DOLLS/鼠式/ARM10030101_Battle.png",
             "thumb": "sprites/DOLLS/鼠式/ARM10030101_Battle.png",
             "category": "DOLLS",
-            "character": "鼠式"
+            "character": "鼠式",
+            "width": 1155,
+            "height": 961
         },
         {
             "id": "ARM10030101_Normal",
@@ -167,7 +207,9 @@
             "src": "sprites/DOLLS/鼠式/ARM10030101_Normal.png",
             "thumb": "sprites/DOLLS/鼠式/ARM10030101_Normal.png",
             "category": "DOLLS",
-            "character": "鼠式"
+            "character": "鼠式",
+            "width": 491,
+            "height": 773
         },
         {
             "id": "sprites_DOLLS_鼠式_ARM10030201_Battle",
@@ -175,7 +217,9 @@
             "src": "sprites/DOLLS/鼠式/ARM10030201_Battle.png",
             "thumb": "sprites/DOLLS/鼠式/ARM10030201_Battle.png",
             "category": "DOLLS",
-            "character": "鼠式"
+            "character": "鼠式",
+            "width": 1148,
+            "height": 957
         },
         {
             "id": "ARM10039001_Battle",
@@ -183,7 +227,9 @@
             "src": "sprites/DOLLS/鼠式/ARM10039001_Battle.png",
             "thumb": "sprites/DOLLS/鼠式/ARM10039001_Battle.png",
             "category": "DOLLS",
-            "character": "鼠式"
+            "character": "鼠式",
+            "width": 1255,
+            "height": 1078
         },
         {
             "id": "ARM10039001_Normal",
@@ -191,7 +237,9 @@
             "src": "sprites/DOLLS/鼠式/ARM10039001_Normal.png",
             "thumb": "sprites/DOLLS/鼠式/ARM10039001_Normal.png",
             "category": "DOLLS",
-            "character": "鼠式"
+            "character": "鼠式",
+            "width": 664,
+            "height": 828
         },
         {
             "id": "ARM10039002_Battle",
@@ -199,7 +247,9 @@
             "src": "sprites/DOLLS/鼠式/ARM10039002_Battle.png",
             "thumb": "sprites/DOLLS/鼠式/ARM10039002_Battle.png",
             "category": "DOLLS",
-            "character": "鼠式"
+            "character": "鼠式",
+            "width": 1028,
+            "height": 658
         },
         {
             "id": "ARM10039002_Normal",
@@ -207,7 +257,9 @@
             "src": "sprites/DOLLS/鼠式/ARM10039002_Normal.png",
             "thumb": "sprites/DOLLS/鼠式/ARM10039002_Normal.png",
             "category": "DOLLS",
-            "character": "鼠式"
+            "character": "鼠式",
+            "width": 793,
+            "height": 729
         },
         {
             "id": "ARM10039003_Battle",
@@ -215,7 +267,9 @@
             "src": "sprites/DOLLS/鼠式/ARM10039003_Battle.png",
             "thumb": "sprites/DOLLS/鼠式/ARM10039003_Battle.png",
             "category": "DOLLS",
-            "character": "鼠式"
+            "character": "鼠式",
+            "width": 582,
+            "height": 695
         },
         {
             "id": "ARM10039003_Normal",
@@ -223,7 +277,9 @@
             "src": "sprites/DOLLS/鼠式/ARM10039003_Normal.png",
             "thumb": "sprites/DOLLS/鼠式/ARM10039003_Normal.png",
             "category": "DOLLS",
-            "character": "鼠式"
+            "character": "鼠式",
+            "width": 334,
+            "height": 692
         },
         {
             "id": "EMY84131_Texture",
@@ -231,7 +287,9 @@
             "src": "sprites/ENEMY/白新娘/EMY84131_Texture.png",
             "thumb": "sprites/ENEMY/白新娘/EMY84131_Texture.png",
             "category": "ENEMY",
-            "character": "白新娘"
+            "character": "白新娘",
+            "width": 1269,
+            "height": 997
         },
         {
             "id": "EMY84121_Texture",
@@ -239,7 +297,9 @@
             "src": "sprites/ENEMY/黑新娘/EMY84121_Texture.png",
             "thumb": "sprites/ENEMY/黑新娘/EMY84121_Texture.png",
             "category": "ENEMY",
-            "character": "黑新娘"
+            "character": "黑新娘",
+            "width": 1492,
+            "height": 1103
         },
         {
             "id": "EMY84122_Texture",
@@ -247,7 +307,9 @@
             "src": "sprites/ENEMY/黑新娘/EMY84122_Texture.png",
             "thumb": "sprites/ENEMY/黑新娘/EMY84122_Texture.png",
             "category": "ENEMY",
-            "character": "黑新娘"
+            "character": "黑新娘",
+            "width": 1152,
+            "height": 893
         },
         {
             "id": "NPC0001_Messiah",
@@ -255,7 +317,9 @@
             "src": "sprites/NPC/弥赛亚/NPC0001_Messiah.png",
             "thumb": "sprites/NPC/弥赛亚/NPC0001_Messiah.png",
             "category": "NPC",
-            "character": "弥赛亚"
+            "character": "弥赛亚",
+            "width": 639,
+            "height": 1024
         },
         {
             "id": "sprites_NPC_弥赛亚_NPC0020__Clari01",
@@ -263,7 +327,9 @@
             "src": "sprites/NPC/弥赛亚/NPC0020_ Clari01.png",
             "thumb": "sprites/NPC/弥赛亚/NPC0020_ Clari01.png",
             "category": "NPC",
-            "character": "弥赛亚"
+            "character": "弥赛亚",
+            "width": 1024,
+            "height": 724
         },
         {
             "id": "sprites_NPC_弥赛亚_NPC0020__Clari02",
@@ -271,7 +337,9 @@
             "src": "sprites/NPC/弥赛亚/NPC0020_ Clari02.png",
             "thumb": "sprites/NPC/弥赛亚/NPC0020_ Clari02.png",
             "category": "NPC",
-            "character": "弥赛亚"
+            "character": "弥赛亚",
+            "width": 1024,
+            "height": 724
         },
         {
             "id": "NPC0020_Clari01",
@@ -279,7 +347,9 @@
             "src": "sprites/NPC/弥赛亚/NPC0020_Clari01.png",
             "thumb": "sprites/NPC/弥赛亚/NPC0020_Clari01.png",
             "category": "NPC",
-            "character": "弥赛亚"
+            "character": "弥赛亚",
+            "width": 1024,
+            "height": 724
         },
         {
             "id": "NPC0020_Clari02",
@@ -287,7 +357,9 @@
             "src": "sprites/NPC/弥赛亚/NPC0020_Clari02.png",
             "thumb": "sprites/NPC/弥赛亚/NPC0020_Clari02.png",
             "category": "NPC",
-            "character": "弥赛亚"
+            "character": "弥赛亚",
+            "width": 1024,
+            "height": 724
         },
         {
             "id": "NPC0020_Messiah",
@@ -295,7 +367,9 @@
             "src": "sprites/NPC/弥赛亚/NPC0020_Messiah.png",
             "thumb": "sprites/NPC/弥赛亚/NPC0020_Messiah.png",
             "category": "NPC",
-            "character": "弥赛亚"
+            "character": "弥赛亚",
+            "width": 838,
+            "height": 1537
         },
         {
             "id": "NPC0002_Gretel",
@@ -303,7 +377,9 @@
             "src": "sprites/NPC/格蕾特/NPC0002_Gretel.png",
             "thumb": "sprites/NPC/格蕾特/NPC0002_Gretel.png",
             "category": "NPC",
-            "character": "格蕾特"
+            "character": "格蕾特",
+            "width": 638,
+            "height": 1024
         },
         {
             "id": "NPC0002_Gretel_2",
@@ -311,7 +387,9 @@
             "src": "sprites/NPC/格蕾特/NPC0002_Gretel_2.png",
             "thumb": "sprites/NPC/格蕾特/NPC0002_Gretel_2.png",
             "category": "NPC",
-            "character": "格蕾特"
+            "character": "格蕾特",
+            "width": 624,
+            "height": 1024
         },
         {
             "id": "NPC0002_Gretel_3",
@@ -319,7 +397,9 @@
             "src": "sprites/NPC/格蕾特/NPC0002_Gretel_3.png",
             "thumb": "sprites/NPC/格蕾特/NPC0002_Gretel_3.png",
             "category": "NPC",
-            "character": "格蕾特"
+            "character": "格蕾特",
+            "width": 624,
+            "height": 1024
         },
         {
             "id": "NPC0002_Gretel_4",
@@ -327,7 +407,9 @@
             "src": "sprites/NPC/格蕾特/NPC0002_Gretel_4.png",
             "thumb": "sprites/NPC/格蕾特/NPC0002_Gretel_4.png",
             "category": "NPC",
-            "character": "格蕾特"
+            "character": "格蕾特",
+            "width": 692,
+            "height": 1024
         }
     ],
     "bgm": [],

@@ -10,6 +10,8 @@
     var PREVIEW_KEY = 'asha:preview';
     var SAVE_KEY = 'asha:player:saves';
     var CFG_KEY = 'asha:player:cfg';
+    var READ_KEY = 'asha:player:read';   // 已读节点记录（按作品名隔离）
+    var THUMB_W = 192;                   // 存档缩略图宽度（16:9 → 108 高）
 
     // ============ 状态 ============
     var work = null;            // { manifest, assets[], scenes[] }
@@ -27,8 +29,10 @@
     var isAuto = false;
     var autoTimer = null;
     var isSkipping = false;
+    var skipTimer = null;       // Ctrl 快进的循环定时器
     var bgmEl = null;
     var cfg = { speed: 30, auto: 1000, bgm: 0.6 };
+    var readSet = {};           // 已读节点集合：key 为 "sceneId#nodeIndex"
 
     // ============ 工具 ============
     function $(id) { return document.getElementById(id); }
@@ -131,6 +135,8 @@
     function executeNode(node) {
         // 隐藏选项与对话框
         hideChoices();
+        // 记录已读：节点一旦执行即视为已读（供下次快进跳过）
+        markRead(curSceneId, nodeIndex);
         switch (node.type) {
             case 'bg':     applyBg(node); nextNode(); break;
             case 'sprite': applySprite(node); nextNode(); break;
@@ -436,6 +442,7 @@
 
     function onKey(e) {
         if (isModalOpen()) {
+            if (isSkipping) stopSkipping();
             if (e.key === 'Escape') closeAllModals();
             return;
         }
@@ -461,26 +468,49 @@
         isSkipping = true;
         $('btnSkip').classList.add('is-active');
         if (isTyping) typeStep();
+        // 需求 4.3.2：按住 Ctrl 快进（打字机瞬显，自动推进，遇选项停止）
+        skipTick();
     }
     function stopSkipping() {
         isSkipping = false;
         $('btnSkip').classList.remove('is-active');
+        clearTimeout(skipTimer);
+    }
+    // 快进循环：持续推进直到遇选项、未读节点或剧终
+    function skipTick() {
+        clearTimeout(skipTimer);
+        if (!isSkipping) return;
+        if (isWaitingChoice) { stopSkipping(); return; }
+        if (isTyping) { finishTyping(); }
+        var sc = sceneMap[curSceneId];
+        if (!sc || nodeIndex + 1 >= sc.nodes.length) { stopSkipping(); showEnding(); return; }
+        var nextIdx = nodeIndex + 1;
+        if (sc.nodes[nextIdx].type === 'choose') { stopSkipping(); advance(); return; }
+        // 未读节点：停止快进，交回正常播放流程
+        if (!isRead(curSceneId, nextIdx)) { stopSkipping(); advance(); return; }
+        nodeIndex = nextIdx;
+        executeNodeQuiet(sc.nodes[nextIdx]);
+        skipTimer = setTimeout(skipTick, 30);
     }
     function skipToChoice() {
-        // 快进到下一选项或场景结束
+        // 快进到下一选项或场景结束；已读节点直接跳过，未读节点正常播放
         var guard = 0;
         while (guard++ < 200) {
             var sc = sceneMap[curSceneId];
             if (!sc) { showEnding(); return; }
             if (nodeIndex + 1 >= sc.nodes.length) { showEnding(); return; }
-            var next = sc.nodes[nodeIndex + 1];
+            var nextIdx = nodeIndex + 1;
+            var next = sc.nodes[nextIdx];
             if (next.type === 'choose') { advance(); return; }
-            nodeIndex++;
+            // 未读节点：停止快进，交回正常播放流程
+            if (!isRead(curSceneId, nextIdx)) { advance(); return; }
+            nodeIndex = nextIdx;
             executeNodeQuiet(next);
         }
     }
     // 静默执行（跳过节点但不展开对话/选项）
     function executeNodeQuiet(node) {
+        markRead(curSceneId, nodeIndex);
         switch (node.type) {
             case 'bg': applyBg(node); break;
             case 'sprite': applySprite(node); break;
@@ -508,6 +538,34 @@
         }
     }
 
+    // ============ 已读记录 ============
+    // 需求 4.3.4：历史对话记录可滚动回看，已读可跳过。
+    // 已读按「作品名 + 场景 + 节点序号」记录，同一作品重玩时生效。
+    function readKey(sceneId, idx) { return sceneId + '#' + idx; }
+    function loadRead() {
+        readSet = {};
+        try {
+            var all = JSON.parse(localStorage.getItem(READ_KEY) || '{}');
+            var mine = all[work && work.manifest ? (work.manifest.name || '未命名作品') : ''] || {};
+            readSet = mine;
+        } catch (e) { readSet = {}; }
+    }
+    function saveRead() {
+        try {
+            var all = JSON.parse(localStorage.getItem(READ_KEY) || '{}');
+            all[work && work.manifest ? (work.manifest.name || '未命名作品') : ''] = readSet;
+            localStorage.setItem(READ_KEY, JSON.stringify(all));
+        } catch (e) {}
+    }
+    function isRead(sceneId, idx) { return !!readSet[readKey(sceneId, idx)]; }
+    function markRead(sceneId, idx) {
+        var k = readKey(sceneId, idx);
+        if (readSet[k]) return;
+        readSet[k] = 1;
+        saveRead();
+    }
+    function clearRead() { readSet = {}; saveRead(); }
+
     // ============ 历史 ============
     function openHistory() {
         var list = $('historyList');
@@ -526,6 +584,50 @@
     }
 
     // ============ 存档 ============
+    // 采集舞台缩略图：把当前背景与立绘按舞台尺寸绘制到离屏 canvas。
+    // 不使用 html2canvas 等外部库，直接按元素几何信息重绘，避免额外依赖。
+    function captureThumb() {
+        var stage = $('stage');
+        var w = stage.clientWidth, h = stage.clientHeight;
+        if (!w || !h) return '';
+        var cv = document.createElement('canvas');
+        cv.width = THUMB_W;
+        cv.height = Math.round(THUMB_W * h / w);
+        var ctx = cv.getContext('2d');
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        var sx = cv.width / w, sy = cv.height / h;
+
+        // 背景：cover 等比铺满
+        var bg = $('bgLayer');
+        var bgUrl = bg && bg.style.backgroundImage;
+        var bgImg = bgUrl ? bg.querySelector('img') : null;
+        var bgSrc = bgImg ? bgImg.src : (bgUrl || '').replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
+        if (bgSrc) {
+            var bi = new Image();
+            bi.src = bgSrc;
+            if (bi.complete && bi.naturalWidth) {
+                var scale = Math.max(cv.width / bi.naturalWidth, cv.height / bi.naturalHeight);
+                var dw = bi.naturalWidth * scale, dh = bi.naturalHeight * scale;
+                ctx.drawImage(bi, (cv.width - dw) / 2, (cv.height - dh) / 2, dw, dh);
+            }
+        }
+
+        // 立绘：按元素在舞台中的相对位置与尺寸等比缩放
+        var stageRect = stage.getBoundingClientRect();
+        Array.prototype.forEach.call($('spriteLayer').querySelectorAll('.sprite'), function (spr) {
+            var img = spr.querySelector('img');
+            if (!img || !img.complete || !img.naturalWidth) return;
+            var r = spr.getBoundingClientRect();
+            if (!r.width || !r.height) return;
+            ctx.drawImage(img,
+                (r.left - stageRect.left) * sx, (r.top - stageRect.top) * sy,
+                r.width * sx, r.height * sy);
+        });
+
+        try { return cv.toDataURL('image/jpeg', 0.6); } catch (e) { return ''; }
+    }
+
     function getSaves() {
         try { return JSON.parse(localStorage.getItem(SAVE_KEY) || '[]'); }
         catch (e) { return []; }
@@ -539,6 +641,7 @@
             sceneId: curSceneId,
             nodeIndex: nodeIndex,
             variables: Object.assign({}, variables),
+            thumb: captureThumb(),
             time: new Date().toISOString()
         };
     }
@@ -549,6 +652,18 @@
         for (var i = 0; i < 3; i++) {
             var s = saves[i];
             var slot = el('div', 'save-slot' + (s ? '' : ' is-empty'));
+            // 缩略图：存档时采集的舞台截图，缺失时显示占位
+            var thumb = el('div', 'save-slot__thumb');
+            if (s && s.thumb) {
+                var im = el('img');
+                im.src = s.thumb;
+                im.alt = '存档缩略图';
+                thumb.appendChild(im);
+            } else {
+                thumb.classList.add('is-empty');
+                thumb.textContent = '无图';
+            }
+            slot.appendChild(thumb);
             var info = el('div', 'save-slot__info');
             var title = el('div', 'save-slot__title', '存档槽 ' + (i + 1));
             var meta = el('div', 'save-slot__meta', s
@@ -647,6 +762,7 @@
         $('btnLoad').addEventListener('click', openLoad);
         $('btnSettings').addEventListener('click', openSettings);
         $('btnRestart').addEventListener('click', function () {
+            if (isSkipping) stopSkipping();
             variables = {}; history = [];
             $('ending').hidden = true;
             $('spriteLayer').innerHTML = '';
@@ -660,6 +776,9 @@
         $('closeSettings').addEventListener('click', function () { $('settingsModal').hidden = true; });
         $('btnClearSave').addEventListener('click', function () {
             if (confirm('确定清空全部存档？')) { setSaves([]); renderSaveList('save'); toast('已清空'); }
+        });
+        $('btnClearRead').addEventListener('click', function () {
+            clearRead(); toast('已清空已读记录', 'ok');
         });
         bindSettings();
     }
@@ -682,6 +801,7 @@
         loadCfg();
         bindSettings();
         if (!loadWork()) return;
+        loadRead();
         bind();
         enterScene(curSceneId);
     }

@@ -107,6 +107,97 @@ function spriteMeta($rel)
     return ['category' => '其他', 'character' => ''];
 }
 
+/**
+ * 读取图片分辨率（需求 4.2.4 第 2 点：分辨率元信息）。
+ * 用 getimagesize 读取，失败返回空数组。
+ */
+function imageMeta($absPath)
+{
+    $info = @getimagesize($absPath);
+    if (!$info) return [];
+    return ['width' => $info[0], 'height' => $info[1]];
+}
+
+/**
+ * 读取音频时长（秒，需求 4.2.4 第 2 点：时长元信息）。
+ * 仅解析 mp3 / wav 头部，避免引入第三方库；其他格式返回空数组。
+ */
+function audioMeta($absPath)
+{
+    $ext = strtolower(pathinfo($absPath, PATHINFO_EXTENSION));
+    if ($ext === 'wav') {
+        $fp = @fopen($absPath, 'rb');
+        if (!$fp) return [];
+        $head = fread($fp, 12);
+        fclose($fp);
+        if (strlen($head) < 12 || substr($head, 0, 4) !== 'RIFF') return [];
+        // 遍历 chunk 找到 fmt（取字节率）与 data（取数据长度）
+        $fp = @fopen($absPath, 'rb');
+        fseek($fp, 12);
+        $byteRate = 0; $dataSize = 0;
+        while (!feof($fp)) {
+            $chunk = fread($fp, 8);
+            if (strlen($chunk) < 8) break;
+            $id = substr($chunk, 0, 4);
+            $size = unpack('V', substr($chunk, 4, 4))[1];
+            if ($id === 'fmt ') {
+                $fmt = fread($fp, $size);
+                if (strlen($fmt) >= 12) $byteRate = unpack('V', substr($fmt, 8, 4))[1];
+            } elseif ($id === 'data') {
+                $dataSize = $size;
+                break;
+            } else {
+                fseek($fp, $size + ($size % 2), SEEK_CUR);
+                continue;
+            }
+            fseek($fp, $size % 2, SEEK_CUR);
+        }
+        fclose($fp);
+        if ($byteRate > 0 && $dataSize > 0) {
+            return ['duration' => round($dataSize / $byteRate, 1)];
+        }
+        return [];
+    }
+    if ($ext === 'mp3') {
+        // 解析第一帧头得到比特率，再按文件大小估算时长
+        $fp = @fopen($absPath, 'rb');
+        if (!$fp) return [];
+        $size = filesize($absPath);
+        $head = fread($fp, 4096);
+        fclose($fp);
+        $rates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+        $len = strlen($head);
+        for ($i = 0; $i + 4 <= $len; $i++) {
+            if (ord($head[$i]) !== 0xFF) continue;
+            $b1 = ord($head[$i + 1]);
+            if (($b1 & 0xE0) !== 0xE0) continue;
+            $verBits = ($b1 >> 3) & 0x03;   // 3=MPEG1, 2=MPEG2, 0=MPEG2.5
+            $layerBits = ($b1 >> 1) & 0x03;
+            if ($verBits === 1 || $layerBits === 0) continue;
+            $b2 = ord($head[$i + 2]);
+            $rateIdx = ($b2 >> 4) & 0x0F;
+            if ($rateIdx === 0 || $rateIdx === 15) continue;
+            $kbps = $rates[$rateIdx];
+            if ($verBits !== 3) $kbps = $kbps / 2;   // MPEG2/2.5 比特率减半
+            if ($kbps > 0) {
+                return ['duration' => round($size * 8 / ($kbps * 1000), 1)];
+            }
+        }
+        return [];
+    }
+    return [];
+}
+
+/**
+ * 按分类收集素材元信息（分辨率 / 时长）。
+ */
+function assetMeta($dir, $absPath)
+{
+    if ($dir === 'bg' || $dir === 'sprites') return imageMeta($absPath);
+    if ($dir === 'bgm' || $dir === 'sfx') return audioMeta($absPath);
+    return [];
+}
+
 $added = [];
 $removed = [];
 $kept = 0;
@@ -129,8 +220,15 @@ foreach ($sections as $dir => $section) {
 
     $result = [];
     foreach ($files as $rel) {
+        $abs = $assetsDir . '/' . $rel;
+        $meta = assetMeta($dir, $abs);
         if (isset($bySrc[$rel])) {
-            $result[] = $bySrc[$rel];   // 保留人工维护的字段
+            // 保留人工维护的字段，但元信息（分辨率/时长）始终按实际文件刷新
+            $item = $bySrc[$rel];
+            foreach ($meta as $k => $v) {
+                if (!isset($item[$k]) || $item[$k] !== $v) $item[$k] = $v;
+            }
+            $result[] = $item;
             $kept++;
             continue;
         }
@@ -143,13 +241,14 @@ foreach ($sections as $dir => $section) {
 
         $item = ['id' => $id, 'name' => defaultName($rel), 'src' => $rel];
         if ($dir === 'sprites') {
-            $meta = spriteMeta($rel);
+            $smeta = spriteMeta($rel);
             $item['thumb'] = $rel;
-            $item['category'] = $meta['category'];
-            if ($meta['character'] !== '') $item['character'] = $meta['character'];
+            $item['category'] = $smeta['category'];
+            if ($smeta['character'] !== '') $item['character'] = $smeta['character'];
         } elseif ($dir === 'bg') {
             $item['thumb'] = $rel;
         }
+        foreach ($meta as $k => $v) { $item[$k] = $v; }
         $result[] = $item;
         $added[] = "[{$section}] {$rel}  (id={$id})";
     }

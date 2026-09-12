@@ -293,7 +293,7 @@
 .save-slot {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 10px;
     padding: 10px 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -304,10 +304,29 @@
 }
 .save-slot:hover { border-color: var(--accent); }
 .save-slot.is-empty { color: var(--text-muted); }
-.save-slot__info { display: flex; flex-direction: column; gap: 2px; }
+/* 存档缩略图：16:9 固定尺寸，避免不同存档撑高列表 */
+.save-slot__thumb {
+    flex: 0 0 auto;
+    width: 96px;
+    height: 54px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid var(--border);
+}
+.save-slot__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.save-slot__thumb.is-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.03);
+}
+.save-slot__info { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .save-slot__title { color: var(--text); }
 .save-slot__meta { font-size: 11px; }
-.save-slot__actions { display: flex; gap: 6px; }
+.save-slot__actions { flex: 0 0 auto; display: flex; gap: 6px; }
 .save-slot__btn {
     padding: 4px 10px; font-size: 12px;
     border: 1px solid var(--border);

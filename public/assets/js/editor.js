@@ -52,7 +52,8 @@
         spriteKeyword: '',
         spriteCategory: '全部',
         spriteCharacter: null,
-        view: 'nodes'   // 中栏视图：nodes（节点卡片）/ outline（剧情大纲）
+        view: 'nodes',      // 中栏视图：nodes（节点卡片）/ outline（剧情大纲）
+        assetView: 'grid'   // 素材库视图：grid（网格）/ list（列表）
     };
 
     function newWork() {
@@ -354,6 +355,8 @@
         var grid = $('assetGrid');
         hidePreview();
         grid.innerHTML = '';
+        // 网格 / 列表双视图（需求 4.2.4 第 3 点）
+        grid.classList.toggle('asset-grid--list', state.assetView === 'list');
         var isSprite = (state.activeAssetTab === 'sprite');
         $('spriteFilter').hidden = !isSprite;
 
@@ -456,7 +459,7 @@
         bar.appendChild(el('span', 'sprite-result-bar__text', c.items.length + ' 张立绘'));
         grid.appendChild(bar);
 
-        var g = el('div', 'asset-grid');
+        var g = el('div', 'asset-grid' + (state.assetView === 'list' ? ' asset-grid--list' : ''));
         c.items.forEach(function (item) { g.appendChild(buildAssetCard(item, false)); });
         grid.appendChild(g);
     }
@@ -561,12 +564,15 @@
             thumb.addEventListener('mouseleave', hidePreview);
         }
         card.appendChild(thumb);
-        card.appendChild(el('div', 'asset-item__name', escapeHtml(item.name)));
-        // 立绘展示 character 值，方便用户在"说话角色"里填写
+        var nameEl = el('div', 'asset-item__name', escapeHtml(item.name));
+        // 列表视图下名称可能被省略号截断，悬停显示完整名称
+        nameEl.title = item.name;
+        card.appendChild(nameEl);
+        // 元信息：图片显示分辨率，音频显示时长（需求 4.2.4 第 2 点）
+        var metaText = assetMetaText(item);
+        if (metaText) card.appendChild(el('div', 'asset-item__meta', metaText));
+        // 立绘提供构图调整入口：缩放/裁剪结果按素材 id 记住，之后引用自动套用
         if (state.activeAssetTab === 'sprite') {
-            card.appendChild(el('div', 'asset-item__char',
-                item.character ? '角色：' + escapeHtml(item.character) : '角色：未设置'));
-            // 调整构图：缩放/裁剪，结果按素材 id 记住，之后引用自动套用
             var adj = el('button', 'asset-item__adj', '调整');
             adj.type = 'button';
             adj.title = '调整该立绘的缩放与裁剪';
@@ -579,6 +585,17 @@
         }
         card.addEventListener('click', function () { onAssetClick(item); });
         return card;
+    }
+
+    // 素材元信息文本：图片 → "1024×576"，音频 → "1:23"
+    function assetMetaText(item) {
+        if (item.width && item.height) return item.width + '×' + item.height;
+        if (item.duration) {
+            var total = Math.round(item.duration);
+            var m = Math.floor(total / 60), s = total % 60;
+            return m + ':' + (s < 10 ? '0' : '') + s;
+        }
+        return '';
     }
 
     // 点击素材 → 在当前场景插入对应节点
@@ -1866,6 +1883,17 @@
             if (!t) return;
             state.activeAssetTab = t.dataset.tab;
             Array.prototype.forEach.call($('assetTabs').children, function (c) {
+                c.classList.toggle('is-active', c === t);
+            });
+            renderAssetGrid();
+        });
+
+        // 素材库视图切换（网格 / 列表）
+        $('assetViewTabs').addEventListener('click', function (e) {
+            var t = e.target.closest('.tab');
+            if (!t) return;
+            state.assetView = t.dataset.view;
+            Array.prototype.forEach.call($('assetViewTabs').children, function (c) {
                 c.classList.toggle('is-active', c === t);
             });
             renderAssetGrid();

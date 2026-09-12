@@ -114,6 +114,11 @@
                     <input id="cfgBgm" type="range" min="0" max="1" step="0.05">
                     <span id="cfgBgmVal" class="setting-val"></span>
                 </label>
+                <div class="setting-row">
+                    <span>已读记录</span>
+                    <button class="btn btn--ghost btn--sm" id="btnClearRead" type="button">清空已读</button>
+                    <span class="setting-val"></span>
+                </div>
             </div>
         </div>
     </div>

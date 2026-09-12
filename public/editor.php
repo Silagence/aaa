@@ -43,11 +43,17 @@
             <section class="block">
                 <div class="block__head">
                     <h2 class="block__title">素材库</h2>
-                    <div class="tabs" id="assetTabs">
-                        <button class="tab is-active" data-tab="bg" type="button">背景</button>
-                        <button class="tab" data-tab="sprite" type="button">立绘</button>
-                        <button class="tab" data-tab="bgm" type="button">BGM</button>
-                        <button class="tab" data-tab="sfx" type="button">音效</button>
+                    <div class="asset-viewbar">
+                        <div class="tabs" id="assetTabs">
+                            <button class="tab is-active" data-tab="bg" type="button">背景</button>
+                            <button class="tab" data-tab="sprite" type="button">立绘</button>
+                            <button class="tab" data-tab="bgm" type="button">BGM</button>
+                            <button class="tab" data-tab="sfx" type="button">音效</button>
+                        </div>
+                        <div class="tabs tabs--icon" id="assetViewTabs">
+                            <button class="tab is-active" data-view="grid" type="button" title="网格视图">▦</button>
+                            <button class="tab" data-view="list" type="button" title="列表视图">☰</button>
+                        </div>
                     </div>
                 </div>
                 <div class="block__body">
