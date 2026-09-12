@@ -32,6 +32,10 @@
     var isSkipping = false;
     var skipTimer = null;       // Ctrl 快进的循环定时器
     var bgmEl = null;
+    var bgmFadeTimer = null;    // BGM 淡入淡出定时器
+    var bgmCurSrc = '';         // 当前 BGM 素材地址，用于判断是否需要换曲
+    var BGM_FADE_MS = 600;      // 淡入淡出时长（毫秒）
+    var BGM_FADE_STEP = 40;     // 淡入淡出刷新间隔（毫秒）
     var cfg = { speed: 30, auto: 1000, bgm: 0.6 };
     var readSet = {};           // 已读节点集合：key 为 "sceneId#nodeIndex"
 
@@ -262,15 +266,92 @@
         return String(s).replace(/["\\]/g, '\\$&');
     }
 
+    // ============ BGM 平滑过渡（需求 4.3.3） ============
+    // 换曲时旧曲淡出、新曲淡入，避免直接切换造成的突兀断点。
+    function stopBgmFade() {
+        if (bgmFadeTimer) { clearInterval(bgmFadeTimer); bgmFadeTimer = null; }
+    }
+
+    // 在 duration 毫秒内把 audio 的音量从 from 线性过渡到 to，结束后执行 done
+    function fadeVolume(audio, from, to, duration, done) {
+        var steps = Math.max(1, Math.round(duration / BGM_FADE_STEP));
+        var i = 0;
+        audio.volume = Math.max(0, Math.min(1, from));
+        var timer = setInterval(function () {
+            i++;
+            var v = from + (to - from) * (i / steps);
+            audio.volume = Math.max(0, Math.min(1, v));
+            if (i >= steps) {
+                clearInterval(timer);
+                if (done) done();
+            }
+        }, BGM_FADE_STEP);
+        return timer;
+    }
+
+    // 淡出并停止当前 BGM；立即停止时传 duration=0
+    function fadeOutBgm(duration, done) {
+        stopBgmFade();
+        if (!bgmEl) { if (done) done(); return; }
+        var a = bgmEl;
+        if (!duration) {
+            a.pause();
+            a.volume = 0;
+            if (done) done();
+            return;
+        }
+        bgmFadeTimer = fadeVolume(a, a.volume, 0, duration, function () {
+            bgmFadeTimer = null;
+            a.pause();
+            if (done) done();
+        });
+    }
+
     function playBgm(node) {
         var a = resolveAsset('bgm', node.ref);
         if (!a) return;
-        if (!bgmEl) { bgmEl = new Audio(); bgmEl.loop = true; }
-        bgmEl.src = assetSrc(a);
-        bgmEl.loop = !!node.loop;
-        bgmEl.volume = cfg.bgm;
-        var p = bgmEl.play();
-        if (p && p.catch) p.catch(function () { /* 自动播放可能被拦截 */ });
+        var src = assetSrc(a);
+        var loop = !!node.loop;
+
+        // 同一首曲子重复触发：只同步 loop 与音量，不重新播放
+        if (bgmEl && bgmCurSrc === src && !bgmEl.paused) {
+            bgmEl.loop = loop;
+            return;
+        }
+
+        var startNew = function () {
+            if (!bgmEl) bgmEl = new Audio();
+            bgmEl.src = src;
+            bgmEl.loop = loop;
+            bgmEl.volume = 0;
+            bgmCurSrc = src;
+            var p = bgmEl.play();
+            if (p && p.catch) p.catch(function () { /* 自动播放可能被拦截 */ });
+            stopBgmFade();
+            bgmFadeTimer = fadeVolume(bgmEl, 0, cfg.bgm, BGM_FADE_MS, function () {
+                bgmFadeTimer = null;
+            });
+        };
+
+        // 已有 BGM 在播放且是换曲：先淡出旧曲再淡入新曲
+        if (bgmEl && !bgmEl.paused && bgmCurSrc !== src) {
+            fadeOutBgm(BGM_FADE_MS, startNew);
+        } else {
+            startNew();
+        }
+    }
+
+    // 停止 BGM：默认淡出，immediate 为 true 时立即停止（读档/重开等场景）
+    function stopBgm(immediate) {
+        if (!bgmEl) return;
+        if (immediate) {
+            stopBgmFade();
+            bgmEl.pause();
+            bgmEl.volume = 0;
+            bgmCurSrc = '';
+            return;
+        }
+        fadeOutBgm(BGM_FADE_MS, function () { bgmCurSrc = ''; });
     }
 
     function playSfx(node) {
@@ -453,7 +534,7 @@
         $('dialog').hidden = true;
         hideChoices();
         $('ending').hidden = false;
-        if (bgmEl) { bgmEl.pause(); }
+        stopBgm();
     }
 
     // ============ 控制键 / 按钮 ============
@@ -733,7 +814,7 @@
         nodeIndex = snap.nodeIndex - 1; // 进入后会 nodeIndex++ 再执行
         variables = Object.assign({}, snap.variables || {});
         $('ending').hidden = true;
-        if (bgmEl) bgmEl.pause();
+        stopBgm(true);
         // 清空立绘
         $('spriteLayer').innerHTML = '';
         nextNode();
@@ -763,7 +844,9 @@
         });
         $('cfgBgm').addEventListener('input', function () {
             cfg.bgm = parseFloat(this.value); $('cfgBgmVal').textContent = Math.round(cfg.bgm * 100) + '%';
-            if (bgmEl) bgmEl.volume = cfg.bgm; saveCfg();
+            // 手动调节音量时取消进行中的淡入淡出，避免被定时器覆盖
+            if (bgmEl) { stopBgmFade(); bgmEl.volume = cfg.bgm; }
+            saveCfg();
         });
     }
 
@@ -792,7 +875,7 @@
             variables = {}; history = [];
             $('ending').hidden = true;
             $('spriteLayer').innerHTML = '';
-            if (bgmEl) bgmEl.pause();
+            stopBgm(true);
             enterScene(work.manifest.startScene || work.scenes[0].id);
         });
 
