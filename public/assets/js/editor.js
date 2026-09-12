@@ -10,25 +10,35 @@
     // ============ 常量 ============
     var STORAGE_KEY = 'asha:editor:draft';
     var PREVIEW_KEY = 'asha:preview';
-    var NODE_TYPES = ['bg', 'sprite', 'bgm', 'sfx', 'say', 'choose', 'var', 'goto'];
+    var NODE_TYPES = ['bg', 'sprite', 'spriteRemove', 'bgm', 'sfx', 'say', 'choose', 'var', 'goto'];
+    // var 节点 if 条件支持的比较运算符（见需求文档 6.3）
+    var CONDITION_OPS = ['==', '!=', '>', '>=', '<', '<='];
+
+    // 条件对象转可读文本，如 { var:'affection', op:'>=', value:'5' } → "affection >= 5"
+    function formatCondition(c) {
+        if (!c) return '';
+        return (c.var || '?') + ' ' + (c.op || '==') + ' ' + (c.value === undefined ? '' : c.value);
+    }
 
     // 节点默认值
     function defaultNode(type) {
         switch (type) {
             case 'bg':     return { type: 'bg',     ref: '', transition: 'fade' };
-            case 'sprite': return { type: 'sprite', ref: '', position: 'center', animation: '' };
+            // character 为节点级字段：同一素材可被多个角色复用，各自独立高亮/变暗
+            case 'sprite': return { type: 'sprite', ref: '', character: '', position: 'center', animation: '' };
+            case 'spriteRemove': return { type: 'spriteRemove', character: '', ref: '' };
             case 'bgm':    return { type: 'bgm',    ref: '', loop: true };
             case 'sfx':    return { type: 'sfx',    ref: '' };
             case 'say':    return { type: 'say',    speaker: '', text: '', voice: '', speed: 30, speakers: '' };
             case 'choose': return { type: 'choose', options: [{ text: '选项1', next: '' }] };
-            case 'var':    return { type: 'var',    set: { affection: '0' } };
+            case 'var':    return { type: 'var',    set: { affection: '0' }, if: null };
             case 'goto':   return { type: 'goto',   next: '' };
             default:       return { type: type };
         }
     }
 
     var NODE_LABELS = {
-        bg: '背景', sprite: '立绘', bgm: 'BGM', sfx: '音效',
+        bg: '背景', sprite: '立绘', spriteRemove: '移除立绘', bgm: 'BGM', sfx: '音效',
         say: '对话', choose: '选项', var: '变量', goto: '跳转'
     };
 
@@ -41,7 +51,8 @@
         activeAssetTab: 'bg',
         spriteKeyword: '',
         spriteCategory: '全部',
-        spriteCharacter: null
+        spriteCharacter: null,
+        view: 'nodes'   // 中栏视图：nodes（节点卡片）/ outline（剧情大纲）
     };
 
     function newWork() {
@@ -75,6 +86,7 @@
         });
         renderAll();
         saveDraft();
+        resetHistory();
         toast('已新建作品');
     }
 
@@ -144,6 +156,99 @@
         } catch (e) { return null; }
     }
 
+    // ============ 撤销 / 重做 ============
+    // 以整份 work 的 JSON 快照入栈，实现简单且不会漏掉任何字段。
+    // 快照只含 work（不含选中态），撤销后按 id 尽量还原选中位置。
+    var HISTORY_LIMIT = 60;      // 文档要求 ≥ 50 步
+    var MERGE_WINDOW = 3000;     // 连续输入合并窗口（ms），覆盖正常打字停顿
+    var history = { stack: [], index: -1, mergeKey: null, mergeTime: 0, locked: false };
+
+    function snapshot() { return JSON.stringify(state.work); }
+
+    // 记录一次可撤销的变更。mergeKey 相同且间隔在窗口内时合并为一步，
+    // 用于文本输入这类高频操作，避免每敲一个字就占一格历史。
+    // 注意：mergeTime 只在「首次入栈」时刷新，合并期间不再刷新，
+    // 否则持续输入会让窗口无限延长，把整段编辑都吞成一步。
+    function pushHistory(mergeKey) {
+        if (history.locked) return;
+        var now = Date.now();
+        var snap = snapshot();
+        if (history.index >= 0 && history.stack[history.index] === snap) return;
+
+        if (mergeKey && history.mergeKey === mergeKey &&
+            now - history.mergeTime < MERGE_WINDOW && history.index >= 0) {
+            history.stack[history.index] = snap;
+            updateHistoryButtons();
+            return;
+        }
+        history.stack = history.stack.slice(0, history.index + 1);
+        history.stack.push(snap);
+        if (history.stack.length > HISTORY_LIMIT) history.stack.shift();
+        history.index = history.stack.length - 1;
+        history.mergeKey = mergeKey || null;
+        history.mergeTime = now;
+        updateHistoryButtons();
+    }
+
+    // 变更 + 记录历史 + 渲染 + 存草稿，供各处操作统一调用
+    function commit(mergeKey) {
+        pushHistory(mergeKey);
+        renderAll();
+        markDirty();
+    }
+
+    function restoreSnapshot(snap) {
+        history.locked = true;
+        var prevScene = state.selectedSceneId;
+        var prevIndex = state.selectedNodeIndex;
+        state.work = JSON.parse(snap);
+        // 尽量保持当前选中位置，避免撤销后视图跳走
+        if (!findScene(prevScene)) {
+            state.selectedSceneId = state.work.scenes.length ? state.work.scenes[0].id : null;
+            state.selectedNodeIndex = -1;
+        } else {
+            state.selectedSceneId = prevScene;
+            var sc = currentScene();
+            state.selectedNodeIndex = (sc && prevIndex < sc.nodes.length) ? prevIndex : -1;
+        }
+        history.locked = false;
+        renderAll();
+        // 撤销/重做时强制把作品信息写回输入框：
+        // 若用户正聚焦在作品名等输入框上，renderWorkInfo 的焦点守卫会跳过写回，
+        // 导致底层数据已回退但界面仍显示旧值。
+        renderWorkInfo(true);
+        markDirty();
+    }
+
+    function undo() {
+        if (history.index <= 0) { toast('没有可撤销的操作'); return; }
+        history.index--;
+        history.mergeKey = null;
+        restoreSnapshot(history.stack[history.index]);
+        updateHistoryButtons();
+        toast('已撤销');
+    }
+    function redo() {
+        if (history.index >= history.stack.length - 1) { toast('没有可重做的操作'); return; }
+        history.index++;
+        history.mergeKey = null;
+        restoreSnapshot(history.stack[history.index]);
+        updateHistoryButtons();
+        toast('已重做');
+    }
+    function updateHistoryButtons() {
+        var u = $('btnUndo'), r = $('btnRedo');
+        if (u) u.disabled = history.index <= 0;
+        if (r) r.disabled = history.index >= history.stack.length - 1;
+    }
+    // 重置历史（新建作品 / 导入后调用），以当前状态作为新的起点
+    function resetHistory() {
+        history.stack = [snapshot()];
+        history.index = 0;
+        history.mergeKey = null;
+        updateHistoryButtons();
+    }
+
     // ============ 素材库加载 ============
     function loadAssets(cb) {
         var xhr = new XMLHttpRequest();
@@ -179,6 +284,25 @@
         var list = assetListByTab(tab);
         for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
         return null;
+    }
+
+    // ============ 立绘构图（缩放/裁剪） ============
+    // 按素材 id 记录，同一张立绘在任何节点被引用时都套用同一套参数。
+    function spriteTransforms() {
+        var m = state.work.manifest;
+        if (!m.spriteTransforms) m.spriteTransforms = {};
+        return m.spriteTransforms;
+    }
+    function hasSpriteTransform(assetId) {
+        return !!spriteTransforms()[assetId];
+    }
+    // 生成内联样式：offsetX/offsetY 为相对画布宽高的比例，与画布分辨率无关
+    function spriteTransformStyle(assetId) {
+        var t = spriteTransforms()[assetId];
+        if (!t) return '';
+        var s = 'transform: translate(' + (t.offsetX * 100) + '%, ' + (t.offsetY * 100) + '%)';
+        if (t.scale !== 1) s += ' scale(' + t.scale + ')';
+        return s + ';';
     }
 
     // ============ 渲染：素材库 ============
@@ -442,6 +566,16 @@
         if (state.activeAssetTab === 'sprite') {
             card.appendChild(el('div', 'asset-item__char',
                 item.character ? '角色：' + escapeHtml(item.character) : '角色：未设置'));
+            // 调整构图：缩放/裁剪，结果按素材 id 记住，之后引用自动套用
+            var adj = el('button', 'asset-item__adj', '调整');
+            adj.type = 'button';
+            adj.title = '调整该立绘的缩放与裁剪';
+            if (hasSpriteTransform(item.id)) adj.classList.add('is-set');
+            adj.addEventListener('click', function (e) {
+                e.stopPropagation();
+                window.AshaSpriteCrop.show(item);
+            });
+            card.appendChild(adj);
         }
         card.addEventListener('click', function () { onAssetClick(item); });
         return card;
@@ -454,11 +588,13 @@
         var type = state.activeAssetTab; // bg/sprite/bgm/sfx 与节点 type 同名
         var node = defaultNode(type);
         node.ref = item.id;
+        // 立绘的角色默认取素材自带的 character，用户可在属性面板改成别的角色，
+        // 从而支持多个角色复用同一张立绘并各自独立高亮/变暗
+        if (type === 'sprite') node.character = item.character || '';
         sc.nodes.push(node);
         state.selectedNodeIndex = sc.nodes.length - 1;
         try {
-            renderAll();
-            markDirty();
+            commit();
         } catch (e) {
             console.error('renderAll failed after asset click', e);
         }
@@ -492,6 +628,8 @@
                 var a = findAsset(node.type, node.ref);
                 if (a) return escapeHtml(a.name || a.id);
                 return node.ref ? escapeHtml(node.ref) : '<未指定素材>';
+            case 'spriteRemove':
+                return node.character ? escapeHtml(node.character) : '<未指定角色>';
             case 'say':
                 return (node.speaker ? escapeHtml(node.speaker) + '：' : '') +
                        (node.text ? escapeHtml(node.text) : '<空对话>');
@@ -499,7 +637,8 @@
                 return node.options.length + ' 个选项';
             case 'var':
                 var keys = Object.keys(node.set || {});
-                return keys.length ? escapeHtml(keys.join(', ')) : '<空变量>';
+                if (keys.length) return escapeHtml(keys.join(', '));
+                return node.if ? '条件分支' : '<空变量>';
             case 'goto':
                 return node.next ? '→ ' + escapeHtml(node.next) : '<未指定>';
         }
@@ -507,15 +646,22 @@
     }
     function nodeSub(node) {
         switch (node.type) {
-            case 'sprite': return 'pos: ' + (node.position || 'center') + (node.animation ? ' · ' + node.animation : '');
+            case 'sprite':
+                return 'pos: ' + (node.position || 'center') +
+                    (node.character ? ' · 角色: ' + node.character : '') +
+                    (node.animation ? ' · ' + node.animation : '');
+            case 'spriteRemove':
+                return node.ref ? '素材: ' + node.ref : '按角色移除';
             case 'bg':     return node.transition ? 'transition: ' + node.transition : '';
             case 'bgm':    return node.loop ? 'loop' : 'no-loop';
             case 'say':    return node.voice ? 'voice: ' + node.voice : '';
             case 'choose': return node.options.map(function (o) { return o.text || '?'; }).join(' / ');
             case 'var':
-                return Object.keys(node.set || {}).map(function (k) {
+                var parts = Object.keys(node.set || {}).map(function (k) {
                     return k + '=' + node.set[k];
-                }).join(', ');
+                });
+                if (node.if) parts.push('if ' + formatCondition(node.if));
+                return parts.join(' · ');
             case 'goto':   return '';
         }
         return '';
@@ -532,6 +678,11 @@
         img.alt = a.name || '';
         img.loading = 'lazy';
         img.draggable = false;
+        // 立绘已调整构图时，缩略图同步反映缩放/裁剪结果
+        if (node.type === 'sprite') {
+            var st = spriteTransformStyle(a.id);
+            if (st) img.style.cssText = st;
+        }
         box.appendChild(img);
         // 悬停预览完整图片
         box.addEventListener('mouseenter', function () {
@@ -612,6 +763,124 @@
         }
     }
 
+    // ============ 渲染：剧情大纲（见需求文档 4.2.2 第 3 点） ============
+    // 以列表形式展示全部场景的前后顺序与分支走向，分支目标可点击跳转。
+    function renderOutline() {
+        var box = $('outlineList');
+        box.innerHTML = '';
+        var scenes = state.work.scenes;
+        if (!scenes.length) {
+            box.appendChild(el('p', 'placeholder', '暂无场景，点击左侧「+ 新建场景」开始创作。'));
+            return;
+        }
+        scenes.forEach(function (sc) {
+            box.appendChild(buildOutlineScene(sc));
+        });
+    }
+
+    function buildOutlineScene(sc) {
+        var isStart = state.work.manifest.startScene === sc.id;
+        var sec = el('section', 'outline-scene' +
+            (sc.id === state.selectedSceneId ? ' is-active' : ''));
+
+        var head = el('div', 'outline-scene__head');
+        head.appendChild(el('span', 'outline-scene__id', escapeHtml(sc.id)));
+        if (isStart) head.appendChild(el('span', 'outline-scene__badge', '起始'));
+        head.appendChild(el('span', 'outline-scene__count', sc.nodes.length + ' 节点'));
+        head.addEventListener('click', function () {
+            state.selectedSceneId = sc.id;
+            state.selectedNodeIndex = -1;
+            renderAll();
+        });
+        sec.appendChild(head);
+
+        var list = el('ol', 'outline-nodes');
+        if (!sc.nodes.length) {
+            list.appendChild(el('li', 'outline-empty', '（空场景）'));
+        }
+        sc.nodes.forEach(function (node, i) {
+            list.appendChild(buildOutlineNode(sc, node, i));
+        });
+        sec.appendChild(list);
+        return sec;
+    }
+
+    function buildOutlineNode(sc, node, i) {
+        var li = el('li', 'outline-node outline-node--' + node.type +
+            (sc.id === state.selectedSceneId && i === state.selectedNodeIndex ? ' is-selected' : ''));
+        li.appendChild(el('span', 'outline-node__type', NODE_LABELS[node.type] || node.type));
+        li.appendChild(el('span', 'outline-node__text', nodeTitle(node)));
+
+        // 分支走向：goto / choose / var-if 的目标场景以可点击链接展示
+        var targets = el('span', 'outline-node__targets');
+        if (node.type === 'goto' && node.next) {
+            targets.appendChild(branchLink(node.next));
+        } else if (node.type === 'choose') {
+            (node.options || []).forEach(function (o) {
+                var link = branchLink(o.next);
+                link.insertBefore(el('span', 'outline-branch__label', (o.text || '?') + ' → '),
+                    link.firstChild);
+                targets.appendChild(link);
+            });
+        } else if (node.type === 'var' && node.if) {
+            var link = branchLink(node.if.next);
+            link.insertBefore(el('span', 'outline-branch__label', 'if ' + formatCondition(node.if) + ' → '),
+                link.firstChild);
+            targets.appendChild(link);
+        }
+        if (targets.children.length) li.appendChild(targets);
+
+        li.addEventListener('click', function () {
+            state.selectedSceneId = sc.id;
+            state.selectedNodeIndex = i;
+            setView('nodes');
+        });
+        return li;
+    }
+
+    // 生成指向目标场景的分支链接；目标不存在时标记为断链
+    function branchLink(sceneId) {
+        var exists = !!findScene(sceneId);
+        var a = el('span', 'outline-branch' + (exists ? '' : ' outline-branch--broken'),
+            escapeHtml(sceneId || '<未指定>'));
+        // 阻止冒泡：避免触发所在节点行的点击（切回节点视图）
+        a.addEventListener('click', function (e) { e.stopPropagation(); });
+        if (exists) {
+            a.title = '跳转到场景 ' + sceneId;
+            a.addEventListener('click', function () {
+                state.selectedSceneId = sceneId;
+                state.selectedNodeIndex = -1;
+                renderAll();
+            });
+        } else {
+            a.title = '目标场景不存在';
+        }
+        return a;
+    }
+
+    // 切换中栏视图（节点卡片 / 剧情大纲）
+    function setView(view) {
+        state.view = view;
+        Array.prototype.forEach.call($('viewTabs').children, function (b) {
+            b.classList.toggle('is-active', b.dataset.view === view);
+        });
+        renderCenter();
+    }
+
+    // 按当前视图渲染中栏主体
+    function renderCenter() {
+        var isOutline = state.view === 'outline';
+        $('nodeList').hidden = isOutline;
+        $('outlineList').hidden = !isOutline;
+        $('emptyHint').hidden = isOutline;
+        $('viewHint').textContent = isOutline ? '点击节点可回到节点视图编辑' : '';
+        if (isOutline) {
+            renderOutline();
+        } else {
+            renderNodeList();
+        }
+    }
+
     // ============ 渲染：节点属性卡片 ============
     function renderProps() {
         var panel = $('propsPanel');
@@ -633,6 +902,7 @@
         switch (node.type) {
             case 'bg':     bgFields(wrap, node); break;
             case 'sprite': spriteFields(wrap, node); break;
+            case 'spriteRemove': spriteRemoveFields(wrap, node); break;
             case 'bgm':    bgmFields(wrap, node); break;
             case 'sfx':    sfxFields(wrap, node); break;
             case 'say':    sayFields(wrap, node); break;
@@ -677,59 +947,104 @@
 
     function bgFields(w, n) {
         var sel = assetSelect('bg', n.ref);
-        sel.addEventListener('change', function () { n.ref = sel.value; renderAll(); markDirty(); });
+        sel.addEventListener('change', function () { n.ref = sel.value; commit(); });
         w.appendChild(fieldRow('背景素材', '')).appendChild(sel);
         var tr = textInput(n.transition || '', '过渡效果 fade/none');
-        tr.addEventListener('input', function () { n.transition = tr.value; markDirty(); });
+        tr.addEventListener('input', function () { n.transition = tr.value; commit('bg.transition'); });
         w.appendChild(fieldRow('过渡', '')).appendChild(tr);
     }
     function spriteFields(w, n) {
         var sel = assetSelect('sprite', n.ref);
-        sel.addEventListener('change', function () { n.ref = sel.value; renderAll(); markDirty(); });
+        sel.addEventListener('change', function () {
+            n.ref = sel.value;
+            // 换素材时若角色为空，自动补上素材自带的 character
+            if (!n.character) {
+                var na = findAsset('sprite', n.ref);
+                if (na && na.character) n.character = na.character;
+            }
+            commit();
+        });
         w.appendChild(fieldRow('立绘素材', '')).appendChild(sel);
+
+        // 角色：节点级字段，决定说话时该立绘高亮还是变暗。
+        // 多个角色可复用同一素材，只要角色值不同即可分别控制。
+        var ch = textInput(n.character || '', '角色名，需与对话的"说话角色"一致');
+        ch.addEventListener('input', function () {
+            n.character = ch.value;
+            refreshActiveNodeCard(); markDirty(); pushHistory('sprite.character');
+        });
+        w.appendChild(fieldRow('角色', '')).appendChild(ch);
+
+        // 调整构图：缩放/裁剪，按素材 id 记住，之后引用同一立绘自动套用
+        var a = findAsset('sprite', n.ref);
+        var adj = el('button', 'btn btn--ghost btn--xs', '调整构图');
+        adj.type = 'button';
+        adj.disabled = !a;
+        if (a && hasSpriteTransform(a.id)) adj.textContent = '调整构图（已修改）';
+        adj.addEventListener('click', function () {
+            if (!a) { toast('请先选择立绘素材', 'err'); return; }
+            window.AshaSpriteCrop.show(a);
+        });
+        w.appendChild(fieldRow('缩放/裁剪', '')).appendChild(adj);
+
         var pos = selectInput(['left', 'center', 'right'], n.position || 'center');
-        pos.addEventListener('change', function () { n.position = pos.value; renderAll(); markDirty(); });
+        pos.addEventListener('change', function () { n.position = pos.value; commit(); });
         w.appendChild(fieldRow('位置', '')).appendChild(pos);
         var ani = textInput(n.animation || '', '动画 fadeIn/none');
         // 输入时仅刷新中栏节点预览，不调用 renderAll，避免属性面板重建导致失焦
-        ani.addEventListener('input', function () { n.animation = ani.value; refreshActiveNodeCard(); markDirty(); });
+        ani.addEventListener('input', function () { n.animation = ani.value; refreshActiveNodeCard(); markDirty(); pushHistory('sprite.animation'); });
         w.appendChild(fieldRow('动画', '')).appendChild(ani);
+    }
+    // 移除立绘：按角色撤下画面上对应的立绘（同素材多角色时用于单独撤下）
+    function spriteRemoveFields(w, n) {
+        var ch = textInput(n.character || '', '要移除的角色名；留空则移除该素材的所有立绘');
+        ch.addEventListener('input', function () {
+            n.character = ch.value;
+            refreshActiveNodeCard(); markDirty(); pushHistory('spriteRemove.character');
+        });
+        w.appendChild(fieldRow('角色', '')).appendChild(ch);
+
+        var sel = assetSelect('sprite', n.ref);
+        sel.addEventListener('change', function () { n.ref = sel.value; commit(); });
+        w.appendChild(fieldRow('限定素材', '')).appendChild(sel);
+        w.appendChild(el('p', 'field__hint',
+            '角色与素材都留空时不做任何操作。只填角色则移除该角色的立绘；只填素材则移除该素材的所有立绘。'));
     }
     function bgmFields(w, n) {
         var sel = assetSelect('bgm', n.ref);
-        sel.addEventListener('change', function () { n.ref = sel.value; markDirty(); });
+        sel.addEventListener('change', function () { n.ref = sel.value; commit(); });
         w.appendChild(fieldRow('BGM', '')).appendChild(sel);
         var lp = el('label', 'field field--inline');
         var cb = document.createElement('input');
         cb.type = 'checkbox'; cb.checked = !!n.loop;
-        cb.addEventListener('change', function () { n.loop = cb.checked; markDirty(); });
+        cb.addEventListener('change', function () { n.loop = cb.checked; commit(); });
         lp.appendChild(cb);
         lp.appendChild(el('span', 'field__label', '循环播放'));
         w.appendChild(lp);
     }
     function sfxFields(w, n) {
         var sel = assetSelect('sfx', n.ref);
-        sel.addEventListener('change', function () { n.ref = sel.value; markDirty(); });
+        sel.addEventListener('change', function () { n.ref = sel.value; commit(); });
         w.appendChild(fieldRow('音效', '')).appendChild(sel);
     }
     function sayFields(w, n) {
         var sp = textInput(n.speaker || '', '角色名');
         // 输入时仅局部更新中栏预览，不重建属性面板，避免每输入一个字就失焦
-        sp.addEventListener('input', function () { n.speaker = sp.value; refreshActiveNodeCard(); markDirty(); });
+        sp.addEventListener('input', function () { n.speaker = sp.value; refreshActiveNodeCard(); markDirty(); pushHistory('say.speaker'); });
         w.appendChild(fieldRow('说话人', '')).appendChild(sp);
         var spk = textInput(n.speakers || '', '立绘 character 值，多个用空格分隔；留空表示不变暗任何人');
-        spk.addEventListener('input', function () { n.speakers = spk.value; markDirty(); });
+        spk.addEventListener('input', function () { n.speakers = spk.value; markDirty(); pushHistory('say.speakers'); });
         w.appendChild(fieldRow('说话角色', '')).appendChild(spk);
         var tx = el('textarea', 'field__input');
         tx.rows = 3; tx.value = n.text || '';
         tx.placeholder = '对话文本';
-        tx.addEventListener('input', function () { n.text = tx.value; refreshActiveNodeCard(); markDirty(); });
+        tx.addEventListener('input', function () { n.text = tx.value; refreshActiveNodeCard(); markDirty(); pushHistory('say.text'); });
         var fr = fieldRow('文本', ''); fr.appendChild(tx); w.appendChild(fr);
         var vc = textInput(n.voice || '', '语音文件（可选）');
-        vc.addEventListener('input', function () { n.voice = vc.value; markDirty(); });
+        vc.addEventListener('input', function () { n.voice = vc.value; markDirty(); pushHistory('say.voice'); });
         w.appendChild(fieldRow('语音', '')).appendChild(vc);
         var sp2 = numberInput(n.speed != null ? n.speed : 30, 1, 200, '打字速度（字符/秒）');
-        sp2.addEventListener('input', function () { n.speed = parseInt(sp2.value, 10) || 30; markDirty(); });
+        sp2.addEventListener('input', function () { n.speed = parseInt(sp2.value, 10) || 30; markDirty(); pushHistory('say.speed'); });
         w.appendChild(fieldRow('打字速度', '')).appendChild(sp2);
     }
     function chooseFields(w, n) {
@@ -739,13 +1054,13 @@
             (n.options || []).forEach(function (opt, idx) {
                 var row = el('div', 'option-row');
                 var t = textInput(opt.text || '', '选项文字');
-                t.addEventListener('input', function () { opt.text = t.value; refreshActiveNodeCard(); markDirty(); });
+                t.addEventListener('input', function () { opt.text = t.value; refreshActiveNodeCard(); markDirty(); pushHistory('choose.text.' + idx); });
                 var nx = sceneSelect(opt.next || '', true);
-                nx.addEventListener('change', function () { opt.next = nx.value; markDirty(); });
+                nx.addEventListener('change', function () { opt.next = nx.value; commit(); });
                 var del = el('button', 'option-row__btn', '✕'); del.title = '删除选项';
                 del.addEventListener('click', function () {
                     n.options.splice(idx, 1);
-                    renderOptions(); renderAll(); markDirty();
+                    renderOptions(); commit();
                 });
                 row.appendChild(t); row.appendChild(nx); row.appendChild(del);
                 list.appendChild(row);
@@ -757,7 +1072,7 @@
         add.addEventListener('click', function () {
             n.options = n.options || [];
             n.options.push({ text: '新选项', next: '' });
-            renderOptions(); renderAll(); markDirty();
+            renderOptions(); commit();
         });
         w.appendChild(add);
     }
@@ -770,12 +1085,12 @@
                 var kIn = textInput(k, '变量名');
                 var vIn = textInput(String(n.set[k]), '值（支持 +1 / -1 / 数字 / 字符串）');
                 var del = el('button', 'option-row__btn', '✕');
-                del.addEventListener('click', function () { delete n.set[k]; renderKv(); renderAll(); markDirty(); });
+                del.addEventListener('click', function () { delete n.set[k]; renderKv(); commit(); });
                 kIn.addEventListener('input', function () {
                     var nk = kIn.value;
-                    if (nk !== k) { var v = n.set[k]; delete n.set[k]; n.set[nk] = v; k = nk; markDirty(); }
+                    if (nk !== k) { var v = n.set[k]; delete n.set[k]; n.set[nk] = v; k = nk; markDirty(); pushHistory('var.key'); }
                 });
-                vIn.addEventListener('input', function () { n.set[k] = vIn.value; markDirty(); });
+                vIn.addEventListener('input', function () { n.set[k] = vIn.value; markDirty(); pushHistory('var.value.' + k); });
                 row.appendChild(kIn); row.appendChild(vIn); row.appendChild(del);
                 list.appendChild(row);
             });
@@ -787,13 +1102,55 @@
             n.set = n.set || {};
             var i = 1; while (n.set['var_' + i]) i++;
             n.set['var_' + i] = '0';
-            renderKv(); renderAll(); markDirty();
+            renderKv(); commit();
         });
         w.appendChild(add);
+
+        // ---- if 条件分支：条件成立时跳转到指定场景，否则继续下一节点 ----
+        var condBox = el('div', 'cond-box');
+        w.appendChild(condBox);
+        function renderCond() {
+            condBox.innerHTML = '';
+            var head = el('div', 'cond-box__head');
+            head.appendChild(el('span', 'cond-box__title', '条件分支（if）'));
+            var toggle = el('button', 'btn btn--ghost btn--xs', n.if ? '移除条件' : '+ 添加条件');
+            toggle.addEventListener('click', function () {
+                n.if = n.if ? null : { var: '', op: '==', value: '', next: '' };
+                commit();
+            });
+            head.appendChild(toggle);
+            condBox.appendChild(head);
+            if (!n.if) {
+                condBox.appendChild(el('p', 'cond-box__hint', '未设置条件：节点仅执行变量赋值。'));
+                return;
+            }
+            var row = el('div', 'cond-row');
+            var varIn = textInput(n.if['var'] || '', '变量名');
+            varIn.addEventListener('input', function () { n.if['var'] = varIn.value; markDirty(); pushHistory('if.var'); });
+            var opSel = document.createElement('select');
+            opSel.className = 'field__input field__input--sm';
+            CONDITION_OPS.forEach(function (op) {
+                var o = document.createElement('option');
+                o.value = op; o.textContent = op;
+                if ((n.if.op || '==') === op) o.selected = true;
+                opSel.appendChild(o);
+            });
+            opSel.addEventListener('change', function () { n.if.op = opSel.value; commit(); });
+            var valIn = textInput(n.if.value === undefined ? '' : String(n.if.value), '比较值');
+            valIn.addEventListener('input', function () { n.if.value = valIn.value; markDirty(); pushHistory('if.value'); });
+            row.appendChild(varIn); row.appendChild(opSel); row.appendChild(valIn);
+            condBox.appendChild(row);
+
+            var nextSel = sceneSelect(n.if.next || '', true);
+            nextSel.addEventListener('change', function () { n.if.next = nextSel.value; commit(); });
+            condBox.appendChild(fieldRow('条件成立时跳转到', '')).appendChild(nextSel);
+            condBox.appendChild(el('p', 'cond-box__hint', '条件不成立时继续执行下一个节点。'));
+        }
+        renderCond();
     }
     function gotoFields(w, n) {
         var sel = sceneSelect(n.next || '', true);
-        sel.addEventListener('change', function () { n.next = sel.value; renderAll(); markDirty(); });
+        sel.addEventListener('change', function () { n.next = sel.value; commit(); });
         w.appendChild(fieldRow('跳转目标场景', '')).appendChild(sel);
     }
 
@@ -822,13 +1179,15 @@
     }
 
     // ============ 渲染：作品信息 ============
-    function renderWorkInfo() {
+    function renderWorkInfo(force) {
         var m = state.work.manifest;
         if (!m.canvas) m.canvas = { width: 1280, height: 720, orientation: 'landscape' };
-        if (document.activeElement !== $('workName')) $('workName').value = m.name || '';
-        if (document.activeElement !== $('workAuthor')) $('workAuthor').value = m.author || '';
-        if (document.activeElement !== $('canvasW')) $('canvasW').value = m.canvas.width;
-        if (document.activeElement !== $('canvasH')) $('canvasH').value = m.canvas.height;
+        // 正常渲染时跳过聚焦中的输入框，避免打断用户输入；
+        // 撤销/重做等需要强制同步的场景传 force=true 覆盖。
+        if (force || document.activeElement !== $('workName')) $('workName').value = m.name || '';
+        if (force || document.activeElement !== $('workAuthor')) $('workAuthor').value = m.author || '';
+        if (force || document.activeElement !== $('canvasW')) $('canvasW').value = m.canvas.width;
+        if (force || document.activeElement !== $('canvasH')) $('canvasH').value = m.canvas.height;
         var sel = $('workStartScene');
         sel.innerHTML = '';
         state.work.scenes.forEach(function (sc) {
@@ -843,7 +1202,7 @@
     function renderAll() {
         renderAssetGrid();
         renderSceneList();
-        renderNodeList();
+        renderCenter();
         renderProps();
         renderWorkInfo();
     }
@@ -855,7 +1214,7 @@
         state.work.scenes.push(sc);
         state.selectedSceneId = id;
         state.selectedNodeIndex = -1;
-        renderAll(); markDirty();
+        commit();
         toast('已新建场景 ' + id);
     }
     function delScene() {
@@ -870,7 +1229,7 @@
             state.selectedSceneId = null;
         }
         state.selectedNodeIndex = -1;
-        renderAll(); markDirty();
+        commit();
     }
     function renameScene(newId) {
         var sc = currentScene();
@@ -892,7 +1251,7 @@
         });
         sc.id = newId;
         state.selectedSceneId = newId;
-        renderAll(); markDirty();
+        commit();
     }
 
     // ============ 操作：节点 CRUD ============
@@ -901,7 +1260,7 @@
         if (!sc) { toast('请先创建/选中场景', 'err'); return; }
         sc.nodes.push(defaultNode(type));
         state.selectedNodeIndex = sc.nodes.length - 1;
-        renderAll(); markDirty();
+        commit();
         toast('已插入 ' + (NODE_LABELS[type] || type) + ' 节点');
     }
     function delNode(i) {
@@ -909,7 +1268,7 @@
         if (!sc || i < 0 || i >= sc.nodes.length) return;
         sc.nodes.splice(i, 1);
         if (state.selectedNodeIndex >= sc.nodes.length) state.selectedNodeIndex = sc.nodes.length - 1;
-        renderAll(); markDirty();
+        commit();
     }
     function moveNode(i, dir) {
         var sc = currentScene();
@@ -919,7 +1278,358 @@
         var tmp = sc.nodes[i]; sc.nodes[i] = sc.nodes[j]; sc.nodes[j] = tmp;
         if (state.selectedNodeIndex === i) state.selectedNodeIndex = j;
         else if (state.selectedNodeIndex === j) state.selectedNodeIndex = i;
-        renderAll(); markDirty();
+        commit();
+    }
+
+    // ============ TXT 脚本格式（参考 WebGAL，见需求文档 6.4） ============
+    // 语法：
+    //   #meta key=value        作品信息（name/author/version/engine/startScene/canvas）
+    //   #scene <id>            场景开始
+    //   bg:<ref>[:<transition>];
+    //   sprite:<ref>[:<character>[:<position>[:<animation>]]];
+    //   spriteRemove:<character>:<ref>;   按角色/素材移除立绘
+    //   bgm:<ref>[:loop|noloop];
+    //   sfx:<ref>;
+    //   say:<speaker>:<text>[:<voice>[:<speed>[:<speakers>]]];
+    //   choose:<text>:<next> | <text>:<next>;
+    //   var:<key>=<value>[,<key>=<value>];
+    //   goto:<sceneId>;
+    // 说明：以 ; 结尾，字段用 : 分隔，| 分隔选项，, 分隔变量。
+    // 文本中的特殊字符用反斜杠转义（\: \; \| \, \\ \n）。
+
+    var TXT_ESCAPE = { '\\': '\\\\', ':': '\\:', ';': '\\;', '|': '\\|', ',': '\\,', '\n': '\\n', '\r': '' };
+
+    function txtEsc(s) {
+        return String(s == null ? '' : s).replace(/[\\:;|,\n\r]/g, function (c) {
+            return TXT_ESCAPE[c] != null ? TXT_ESCAPE[c] : c;
+        });
+    }
+    // 还原转义字符（用于 #meta 这类不按分隔符切分的整段值）
+    function txtUnesc(s) {
+        return String(s == null ? '' : s).replace(/\\(.)/g, function (_, c) {
+            return c === 'n' ? '\n' : c;
+        });
+    }
+    // 按分隔符切分，但忽略被反斜杠转义的字符
+    function txtSplit(line, sep) {
+        var out = [], buf = '', esc = false;
+        for (var i = 0; i < line.length; i++) {
+            var c = line.charAt(i);
+            if (esc) {
+                buf += (c === 'n' ? '\n' : c);
+                esc = false;
+            } else if (c === '\\') {
+                esc = true;
+            } else if (c === sep) {
+                out.push(buf); buf = '';
+            } else {
+                buf += c;
+            }
+        }
+        if (esc) buf += '\\';
+        out.push(buf);
+        return out;
+    }
+
+    function buildTxt() {
+        var w = state.work;
+        var m = w.manifest;
+        var cv = w.canvas || m.canvas || { width: 1280, height: 720 };
+        var lines = [];
+        lines.push('# Asha 剧本脚本（TXT 格式，可读备份）');
+        lines.push('# 语法：<类型>:<字段>...;  场景以 #scene <id> 开始');
+        lines.push('');
+        lines.push('#meta name=' + txtEsc(m.name || ''));
+        lines.push('#meta author=' + txtEsc(m.author || ''));
+        lines.push('#meta version=' + txtEsc(m.version || '1.0.0'));
+        lines.push('#meta engine=' + txtEsc(m.engine || 'asha@1.0'));
+        lines.push('#meta startScene=' + txtEsc(m.startScene || ''));
+        lines.push('#meta canvas=' + (cv.width || 1280) + 'x' + (cv.height || 720));
+        lines.push('');
+
+        w.scenes.forEach(function (sc) {
+            lines.push('#scene ' + sc.id);
+            (sc.nodes || []).forEach(function (n) {
+                lines.push(nodeToTxt(n));
+            });
+            lines.push('');
+        });
+        return lines.join('\n');
+    }
+
+    function nodeToTxt(n) {
+        switch (n.type) {
+            case 'bg':
+                return 'bg:' + txtEsc(n.ref || '') +
+                    (n.transition ? ':' + txtEsc(n.transition) : '') + ';';
+            case 'sprite':
+                // sprite:<素材>:<角色>:<位置>:<动画>;
+                return 'sprite:' + txtEsc(n.ref || '') + ':' + txtEsc(n.character || '') + ':' +
+                    txtEsc(n.position || 'center') +
+                    (n.animation ? ':' + txtEsc(n.animation) : '') + ';';
+            case 'spriteRemove':
+                // spriteRemove:<角色>:<素材>;
+                return 'spriteRemove:' + txtEsc(n.character || '') + ':' + txtEsc(n.ref || '') + ';';
+            case 'bgm':
+                return 'bgm:' + txtEsc(n.ref || '') + ':' + (n.loop === false ? 'noloop' : 'loop') + ';';
+            case 'sfx':
+                return 'sfx:' + txtEsc(n.ref || '') + ';';
+            case 'say':
+                // say:<speaker>:<text>:<voice>:<speed>:<speakers>;
+                return 'say:' + txtEsc(n.speaker || '') + ':' + txtEsc(n.text || '') + ':' +
+                    txtEsc(n.voice || '') + ':' + (n.speed != null ? n.speed : 30) + ':' +
+                    txtEsc(n.speakers || '') + ';';
+            case 'choose':
+                return 'choose:' + (n.options || []).map(function (o) {
+                    return txtEsc(o.text || '') + ':' + txtEsc(o.next || '');
+                }).join(' | ') + ';';
+            case 'var':
+                // var:<k=v,...>:<ifVar>:<ifOp>:<ifValue>:<ifNext>;
+                return 'var:' + Object.keys(n.set || {}).map(function (k) {
+                    return txtEsc(k) + '=' + txtEsc(n.set[k]);
+                }).join(',') + ':' +
+                    (n.if ? txtEsc(n.if['var'] || '') + ':' + txtEsc(n.if.op || '==') + ':' +
+                        txtEsc(n.if.value === undefined ? '' : n.if.value) + ':' +
+                        txtEsc(n.if.next || '') : '') + ';';
+            case 'goto':
+                return 'goto:' + txtEsc(n.next || '') + ';';
+            default:
+                return '# 未知节点类型：' + n.type;
+        }
+    }
+
+    // 解析 TXT 脚本为 work 结构。出错时抛出带行号的 Error。
+    function parseTxt(text) {
+        var manifest = newWork().manifest;
+        var scenes = [];
+        var cur = null;
+        var lines = String(text).replace(/\r\n?/g, '\n').split('\n');
+
+        lines.forEach(function (raw, i) {
+            var lineNo = i + 1;
+            var line = raw.trim();
+            if (!line || line.charAt(0) === '#') {
+                // #scene 是有效指令，其余 # 开头视为注释
+                if (/^#scene\s+/i.test(line)) {
+                    var sid = line.replace(/^#scene\s+/i, '').trim();
+                    if (!sid) throw new Error('第 ' + lineNo + ' 行：#scene 缺少场景 ID');
+                    if (scenes.some(function (s) { return s.id === sid; })) {
+                        throw new Error('第 ' + lineNo + ' 行：场景 ID 重复 ' + sid);
+                    }
+                    cur = { id: sid, nodes: [] };
+                    scenes.push(cur);
+                } else if (/^#meta\s+/i.test(line)) {
+                    var kv = line.replace(/^#meta\s+/i, '');
+                    var eq = kv.indexOf('=');
+                    if (eq > 0) {
+                        var key = kv.slice(0, eq).trim();
+                        var val = kv.slice(eq + 1).trim();
+                        if (key === 'canvas') {
+                            var mm = /^(\d+)\s*x\s*(\d+)$/i.exec(val);
+                            if (mm) manifest.canvas = {
+                                width: parseInt(mm[1], 10),
+                                height: parseInt(mm[2], 10),
+                                orientation: 'landscape'
+                            };
+                        } else if (key) {
+                            manifest[key] = txtUnesc(val);
+                        }
+                    }
+                }
+                return;
+            }
+            if (!cur) throw new Error('第 ' + lineNo + ' 行：节点出现在任何 #scene 之前');
+
+            // 去掉行尾分号
+            var body = line.replace(/;\s*$/, '');
+            var ci = body.indexOf(':');
+            if (ci < 0) throw new Error('第 ' + lineNo + ' 行：缺少 ":" 分隔符');
+            var type = body.slice(0, ci).trim().toLowerCase();
+            // 节点类型大小写不敏感：统一转小写后映射回内部驼峰命名
+            if (type === 'spriteremove') type = 'spriteRemove';
+            var rest = body.slice(ci + 1);
+            cur.nodes.push(txtToNode(type, rest, lineNo));
+        });
+
+        if (!scenes.length) throw new Error('未找到任何 #scene 场景');
+        if (!manifest.startScene || !scenes.some(function (s) { return s.id === manifest.startScene; })) {
+            manifest.startScene = scenes[0].id;
+        }
+        return { manifest: manifest, scenes: scenes };
+    }
+
+    function txtToNode(type, rest, lineNo) {
+        var f = txtSplit(rest, ':');
+        switch (type) {
+            case 'bg':
+                return { type: 'bg', ref: f[0] || '', transition: f[1] || 'fade' };
+            case 'sprite':
+                return {
+                    type: 'sprite', ref: f[0] || '', character: f[1] || '',
+                    position: f[2] || 'center', animation: f[3] || ''
+                };
+            case 'spriteRemove':
+                return { type: 'spriteRemove', character: f[0] || '', ref: f[1] || '' };
+            case 'bgm':
+                return { type: 'bgm', ref: f[0] || '', loop: (f[1] || 'loop') !== 'noloop' };
+            case 'sfx':
+                return { type: 'sfx', ref: f[0] || '' };
+            case 'say':
+                var node = {
+                    type: 'say', speaker: f[0] || '', text: f[1] || '',
+                    voice: f[2] || '', speed: 30, speakers: f[4] || ''
+                };
+                if (f[3] != null && f[3] !== '') {
+                    var sp = parseInt(f[3], 10);
+                    if (!isNaN(sp)) node.speed = sp;
+                }
+                return node;
+            case 'choose':
+                var opts = txtSplit(rest, '|').map(function (seg) {
+                    var p = txtSplit(seg, ':');
+                    return { text: (p[0] || '').trim(), next: (p[1] || '').trim() };
+                }).filter(function (o) { return o.text || o.next; });
+                if (!opts.length) throw new Error('第 ' + lineNo + ' 行：choose 至少需要一个选项');
+                return { type: 'choose', options: opts };
+            case 'var':
+                var set = {};
+                txtSplit(f[0] || '', ',').forEach(function (seg) {
+                    if (!seg) return;
+                    var eq = seg.indexOf('=');
+                    if (eq < 0) throw new Error('第 ' + lineNo + ' 行：变量需为 key=value 形式');
+                    set[seg.slice(0, eq).trim()] = seg.slice(eq + 1);
+                });
+                var node = { type: 'var', set: set, if: null };
+                // 可选条件段：<ifVar>:<ifOp>:<ifValue>:<ifNext>
+                if (f[1] || f[2] || f[3] || f[4]) {
+                    var op = (f[2] || '==').trim();
+                    if (CONDITION_OPS.indexOf(op) < 0) {
+                        throw new Error('第 ' + lineNo + ' 行：不支持的比较运算符 "' + op + '"');
+                    }
+                    node.if = {
+                        'var': (f[1] || '').trim(), op: op,
+                        value: f[3] === undefined ? '' : f[3], next: (f[4] || '').trim()
+                    };
+                }
+                return node;
+            case 'goto':
+                return { type: 'goto', next: f[0] || '' };
+            default:
+                throw new Error('第 ' + lineNo + ' 行：未知节点类型 "' + type + '"');
+        }
+    }
+
+    // ============ 配置校验（见需求文档 4.2.5） ============
+    // 校验必填字段、素材引用是否存在、next/choices 跳转目标是否存在。
+    // 返回 { errors: [], warnings: [] }，errors 非空时导入应被拒绝。
+    // 素材引用以「导入文件自带的 assets 段」为准，缺失时回退到平台内置素材库。
+    function validateWork(data) {
+        var errors = [];
+        var warnings = [];
+
+        // 1) manifest 必填字段
+        var m = data.manifest || {};
+        if (!m.name) warnings.push('作品信息：缺少作品名称（name）');
+        if (!m.startScene) {
+            errors.push('作品信息：缺少起始场景（startScene）');
+        } else if (!data.scenes.some(function (s) { return s.id === m.startScene; })) {
+            errors.push('作品信息：起始场景 "' + m.startScene + '" 不存在');
+        }
+
+        // 2) 素材索引：优先用配置自带的 assets 段，缺失则回退内置素材库
+        var assetIndex = {};
+        var hasOwnAssets = Array.isArray(data.assets) && data.assets.length > 0;
+        if (hasOwnAssets) {
+            data.assets.forEach(function (a) {
+                if (!a || !a.type || !a.id) return;
+                assetIndex[a.type + '|' + a.id] = true;
+            });
+        } else {
+            ['backgrounds', 'sprites', 'bgm', 'sfx'].forEach(function (k) {
+                var t = { backgrounds: 'bg', sprites: 'sprite', bgm: 'bgm', sfx: 'sfx' }[k];
+                (state.assets[k] || []).forEach(function (a) { assetIndex[t + '|' + a.id] = true; });
+            });
+        }
+        function assetExists(type, id) { return !!assetIndex[type + '|' + id]; }
+
+        // 3) 场景 ID 唯一性
+        var sceneIds = {};
+        data.scenes.forEach(function (s) {
+            if (sceneIds[s.id]) errors.push('场景 "' + s.id + '"：ID 重复');
+            sceneIds[s.id] = true;
+        });
+        function sceneExists(id) { return !!sceneIds[id]; }
+
+        // 4) 逐场景逐节点校验
+        data.scenes.forEach(function (sc) {
+            var where = '场景 "' + sc.id + '"';
+            (sc.nodes || []).forEach(function (n, i) {
+                var at = where + ' 第 ' + (i + 1) + ' 个节点（' + (NODE_LABELS[n.type] || n.type) + '）';
+                switch (n.type) {
+                    case 'bg':
+                        if (!n.ref) errors.push(at + '：缺少背景素材（ref）');
+                        else if (!assetExists('bg', n.ref)) errors.push(at + '：背景素材 "' + n.ref + '" 不存在');
+                        break;
+                    case 'sprite':
+                        if (!n.ref) errors.push(at + '：缺少立绘素材（ref）');
+                        else if (!assetExists('sprite', n.ref)) errors.push(at + '：立绘素材 "' + n.ref + '" 不存在');
+                        break;
+                    case 'spriteRemove':
+                        if (!n.character && !n.ref) errors.push(at + '：需指定角色（character）或素材（ref）');
+                        break;
+                    case 'bgm':
+                        if (!n.ref) errors.push(at + '：缺少 BGM 素材（ref）');
+                        else if (!assetExists('bgm', n.ref)) errors.push(at + '：BGM 素材 "' + n.ref + '" 不存在');
+                        break;
+                    case 'sfx':
+                        if (!n.ref) errors.push(at + '：缺少音效素材（ref）');
+                        else if (!assetExists('sfx', n.ref)) errors.push(at + '：音效素材 "' + n.ref + '" 不存在');
+                        break;
+                    case 'say':
+                        if (!n.text) errors.push(at + '：缺少对话文本（text）');
+                        if (!n.speaker) warnings.push(at + '：未填写说话人（speaker）');
+                        break;
+                    case 'choose':
+                        if (!Array.isArray(n.options) || !n.options.length) {
+                            errors.push(at + '：至少需要一个选项（options）');
+                            break;
+                        }
+                        n.options.forEach(function (o, oi) {
+                            var oat = at + ' 选项 ' + (oi + 1);
+                            if (!o.text) errors.push(oat + '：缺少选项文字（text）');
+                            if (!o.next) errors.push(oat + '：缺少跳转目标（next）');
+                            else if (!sceneExists(o.next)) errors.push(oat + '：跳转目标 "' + o.next + '" 不存在');
+                        });
+                        break;
+                    case 'var':
+                        if (!n.set || !Object.keys(n.set).length) {
+                            if (!n.if) errors.push(at + '：缺少变量赋值（set）或条件（if）');
+                        }
+                        if (n.if) {
+                            if (!n.if['var']) errors.push(at + ' 条件：缺少变量名（var）');
+                            if (CONDITION_OPS.indexOf(n.if.op) < 0) {
+                                errors.push(at + ' 条件：不支持的运算符 "' + (n.if.op || '') + '"');
+                            }
+                            if (n.if.value === undefined || n.if.value === '') {
+                                errors.push(at + ' 条件：缺少比较值（value）');
+                            }
+                            if (!n.if.next) errors.push(at + ' 条件：缺少跳转目标（next）');
+                            else if (!sceneExists(n.if.next)) {
+                                errors.push(at + ' 条件：跳转目标 "' + n.if.next + '" 不存在');
+                            }
+                        }
+                        break;
+                    case 'goto':
+                        if (!n.next) errors.push(at + '：缺少跳转目标（next）');
+                        else if (!sceneExists(n.next)) errors.push(at + '：跳转目标 "' + n.next + '" 不存在');
+                        break;
+                    default:
+                        errors.push(at + '：未知节点类型 "' + n.type + '"');
+                }
+            });
+        });
+
+        return { errors: errors, warnings: warnings };
     }
 
     // ============ 导入导出 ============
@@ -945,25 +1655,43 @@
                 created: new Date().toISOString(),
                 engine: w.manifest.engine,
                 startScene: w.manifest.startScene,
-                canvas: w.canvas || w.manifest.canvas
+                canvas: w.canvas || w.manifest.canvas,
+                // 立绘构图（缩放/裁剪），按素材 id 记录，播放器据此还原
+                spriteTransforms: w.manifest.spriteTransforms || {}
             },
             assets: assets,
             scenes: w.scenes
         };
     }
 
+    // 导出格式：'json' | 'txt'
+    var exportFormat = 'json';
+
+    function renderExportArea() {
+        if (exportFormat === 'txt') {
+            $('exportArea').value = buildTxt();
+        } else {
+            $('exportArea').value = JSON.stringify(buildExport(), null, 2);
+        }
+        Array.prototype.forEach.call($('exportTabs').children, function (c) {
+            c.classList.toggle('is-active', c.dataset.format === exportFormat);
+        });
+        $('btnDownload').textContent = '下载 .' + exportFormat;
+    }
+
     function openExport() {
-        var data = buildExport();
-        var json = JSON.stringify(data, null, 2);
-        $('exportArea').value = json;
+        exportFormat = 'json';
+        renderExportArea();
         $('exportModal').hidden = false;
     }
     function closeExport() { $('exportModal').hidden = true; }
 
     function downloadJson() {
-        var json = $('exportArea').value;
-        var name = (state.work.manifest.name || 'asha-work') + '.json';
-        var blob = new Blob([json], { type: 'application/json' });
+        var content = $('exportArea').value;
+        var ext = exportFormat === 'txt' ? '.txt' : '.json';
+        var name = (state.work.manifest.name || 'asha-work') + ext;
+        var mime = exportFormat === 'txt' ? 'text/plain' : 'application/json';
+        var blob = new Blob([content], { type: mime + ';charset=utf-8' });
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url; a.download = name;
@@ -978,35 +1706,82 @@
         catch (e) { navigator.clipboard && navigator.clipboard.writeText(area.value); toast('已复制', 'ok'); }
     }
 
+    // 导入：按扩展名/内容自动识别 JSON 或 TXT 脚本
     function onImportFile(file) {
         var reader = new FileReader();
         reader.onload = function () {
+            var text = String(reader.result);
+            var isTxt = /\.txt$/i.test(file.name) ||
+                (!/^\s*\{/.test(text) && /^\s*(#|bg:|say:|sprite:|bgm:|sfx:|choose:|var:|goto:)/m.test(text));
+            var data;
             try {
-                var data = JSON.parse(reader.result);
-                if (!data.manifest || !Array.isArray(data.scenes)) {
-                    throw new Error('格式不合法：缺少 manifest 或 scenes');
-                }
-                // 校验场景 ID 唯一
-                var ids = {}; data.scenes.forEach(function (s) {
-                    if (!s.id) throw new Error('存在无 ID 的场景');
-                    if (ids[s.id]) throw new Error('场景 ID 重复：' + s.id);
-                    ids[s.id] = true;
-                    if (!Array.isArray(s.nodes)) s.nodes = [];
-                });
-                state.work = {
-                    manifest: Object.assign(newWork().manifest, data.manifest),
-                    scenes: data.scenes
-                };
-                if (!state.work.manifest.canvas) state.work.manifest.canvas = { width: 1280, height: 720 };
-                state.selectedSceneId = data.scenes.length ? data.scenes[0].id : null;
-                state.selectedNodeIndex = -1;
-                renderAll(); saveDraft();
-                toast('导入成功（' + data.scenes.length + ' 场景）', 'ok');
+                data = isTxt ? parseTxt(text) : parseJsonConfig(text);
             } catch (e) {
                 toast('导入失败：' + e.message, 'err');
+                return;
             }
+            // 校验：必填字段 / 素材引用 / 跳转目标（见需求文档 4.2.5）
+            var result = validateWork(data);
+            if (result.errors.length) {
+                showValidateResult(result, data, isTxt);
+                return;
+            }
+            applyImported(data);
+            var msg = '导入成功（' + data.scenes.length + ' 场景，' + (isTxt ? 'TXT' : 'JSON') + '）';
+            if (result.warnings.length) msg += '，' + result.warnings.length + ' 条提示';
+            toast(msg, 'ok');
         };
         reader.readAsText(file, 'utf-8');
+    }
+
+    // 校验未通过：弹出错误清单，用户可选择「仍然导入」（仅警告级问题）或取消
+    function showValidateResult(result, data, isTxt) {
+        var box = $('validateList');
+        box.innerHTML = '';
+        result.errors.forEach(function (msg) {
+            box.appendChild(el('li', 'validate-item validate-item--err', escapeHtml(msg)));
+        });
+        result.warnings.forEach(function (msg) {
+            box.appendChild(el('li', 'validate-item validate-item--warn', escapeHtml(msg)));
+        });
+        $('validateSummary').textContent =
+            '发现 ' + result.errors.length + ' 个错误、' + result.warnings.length + ' 条提示。' +
+            '请修正后重新导入。';
+        $('validateModal').hidden = false;
+        // 「仍然导入」仅在无错误时可用（有错误说明配置不可播放）
+        $('btnForceImport').hidden = result.errors.length > 0;
+        $('btnForceImport').onclick = function () {
+            $('validateModal').hidden = true;
+            applyImported(data);
+            toast('已忽略提示导入（' + data.scenes.length + ' 场景，' + (isTxt ? 'TXT' : 'JSON') + '）', 'ok');
+        };
+    }
+
+    function parseJsonConfig(text) {
+        var data = JSON.parse(text);
+        if (!data.manifest || !Array.isArray(data.scenes)) {
+            throw new Error('格式不合法：缺少 manifest 或 scenes');
+        }
+        // 校验场景 ID 唯一
+        var ids = {}; data.scenes.forEach(function (s) {
+            if (!s.id) throw new Error('存在无 ID 的场景');
+            if (ids[s.id]) throw new Error('场景 ID 重复：' + s.id);
+            ids[s.id] = true;
+            if (!Array.isArray(s.nodes)) s.nodes = [];
+        });
+        return data;
+    }
+
+    function applyImported(data) {
+        state.work = {
+            manifest: Object.assign(newWork().manifest, data.manifest),
+            scenes: data.scenes
+        };
+        if (!state.work.manifest.canvas) state.work.manifest.canvas = { width: 1280, height: 720 };
+        state.selectedSceneId = data.scenes.length ? data.scenes[0].id : null;
+        state.selectedNodeIndex = -1;
+        renderAll(); saveDraft();
+        resetHistory();
     }
 
     // ============ 预览 ============
@@ -1031,19 +1806,29 @@
     function bindEvents() {
         // 顶部
         $('workName').addEventListener('input', function () {
-            state.work.manifest.name = $('workName').value; markDirty();
+            state.work.manifest.name = $('workName').value; markDirty(); pushHistory('work.name');
         });
         $('workAuthor').addEventListener('input', function () {
-            state.work.manifest.author = $('workAuthor').value; markDirty();
+            state.work.manifest.author = $('workAuthor').value; markDirty(); pushHistory('work.author');
         });
         $('canvasW').addEventListener('input', function () {
-            state.work.manifest.canvas.width = parseInt($('canvasW').value, 10) || 1280; markDirty();
+            state.work.manifest.canvas.width = parseInt($('canvasW').value, 10) || 1280; markDirty(); pushHistory('work.canvasW');
         });
         $('canvasH').addEventListener('input', function () {
-            state.work.manifest.canvas.height = parseInt($('canvasH').value, 10) || 720; markDirty();
+            state.work.manifest.canvas.height = parseInt($('canvasH').value, 10) || 720; markDirty(); pushHistory('work.canvasH');
         });
         $('workStartScene').addEventListener('change', function () {
-            state.work.manifest.startScene = $('workStartScene').value; markDirty();
+            state.work.manifest.startScene = $('workStartScene').value; commit();
+        });
+
+        $('btnUndo').addEventListener('click', undo);
+        $('btnRedo').addEventListener('click', redo);
+        // Ctrl+Z 撤销 / Ctrl+Shift+Z 或 Ctrl+Y 重做
+        document.addEventListener('keydown', function (e) {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            var k = e.key.toLowerCase();
+            if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+            else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
         });
 
         $('btnNewWork').addEventListener('click', newWorkConfirm);
@@ -1053,12 +1838,26 @@
             this.value = '';
         });
         $('btnExport').addEventListener('click', openExport);
+        // 导出格式切换（JSON / TXT）
+        $('exportTabs').addEventListener('click', function (e) {
+            var t = e.target.closest('[data-format]');
+            if (!t) return;
+            exportFormat = t.dataset.format;
+            renderExportArea();
+        });
         $('btnPreview').addEventListener('click', preview);
         $('closeModal').addEventListener('click', closeExport);
         $('btnCopyJson').addEventListener('click', copyJson);
         $('btnDownload').addEventListener('click', downloadJson);
         $('exportModal').addEventListener('click', function (e) {
             if (e.target === this) closeExport();
+        });
+
+        // 导入校验结果弹窗
+        $('closeValidate').addEventListener('click', function () { $('validateModal').hidden = true; });
+        $('btnCancelImport').addEventListener('click', function () { $('validateModal').hidden = true; });
+        $('validateModal').addEventListener('click', function (e) {
+            if (e.target === this) $('validateModal').hidden = true;
         });
 
         // 左栏 tabs
@@ -1070,6 +1869,13 @@
                 c.classList.toggle('is-active', c === t);
             });
             renderAssetGrid();
+        });
+
+        // 中栏视图切换（节点 / 大纲）
+        $('viewTabs').addEventListener('click', function (e) {
+            var t = e.target.closest('.tab');
+            if (!t) return;
+            setView(t.dataset.view);
         });
 
         // 立绘搜索（按角色名/立绘名过滤）
@@ -1140,6 +1946,7 @@
         loadAssets(function () {
             renderAll();
             saveDraft();
+            resetHistory();
         });
     }
 
@@ -1148,4 +1955,20 @@
     } else {
         init();
     }
+
+    // 暴露给立绘裁剪弹窗（sprite-crop.js）调用
+    window.AshaEditor = {
+        getAsset: function (type, id) { return findAsset(type, id); },
+        getTransform: function (assetId) {
+            return (state.work.manifest.spriteTransforms || {})[assetId] || null;
+        },
+        setTransform: function (assetId, tf) {
+            var m = state.work.manifest;
+            if (!m.spriteTransforms) m.spriteTransforms = {};
+            if (tf) m.spriteTransforms[assetId] = tf;
+            else delete m.spriteTransforms[assetId];
+            commit();
+        },
+        toast: toast
+    };
 })();

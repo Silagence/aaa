@@ -2,22 +2,10 @@
     "version": "1.0",
     "backgrounds": [
         {
-            "id": "classroom_day",
-            "name": "教室·白天",
-            "src": "bg/classroom_day.svg",
-            "thumb": "bg/classroom_day.svg"
-        },
-        {
-            "id": "forest_night",
-            "name": "森林·夜晚",
-            "src": "bg/forest_night.svg",
-            "thumb": "bg/forest_night.svg"
-        },
-        {
-            "id": "street_dusk",
-            "name": "街道·黄昏",
-            "src": "bg/street_dusk.svg",
-            "thumb": "bg/street_dusk.svg"
+            "id": "bg_BG_MilitaryBase_Red",
+            "name": "BG_MilitaryBase_Red",
+            "src": "bg/BG_MilitaryBase_Red.png",
+            "thumb": "bg/BG_MilitaryBase_Red.png"
         }
     ],
     "sprites": [
@@ -100,6 +88,70 @@
             "thumb": "sprites/DOLLS/KV-1/ARM10019003_Normal.png",
             "category": "DOLLS",
             "character": "KV-1"
+        },
+        {
+            "id": "sprites_DOLLS_T_34_ARM10090101_Battle",
+            "name": "ARM10090101_Battle",
+            "src": "sprites/DOLLS/T-34/ARM10090101_Battle.png",
+            "thumb": "sprites/DOLLS/T-34/ARM10090101_Battle.png",
+            "category": "DOLLS",
+            "character": "T-34"
+        },
+        {
+            "id": "sprites_DOLLS_T_34_ARM10090101_Normal",
+            "name": "ARM10090101_Normal",
+            "src": "sprites/DOLLS/T-34/ARM10090101_Normal.png",
+            "thumb": "sprites/DOLLS/T-34/ARM10090101_Normal.png",
+            "category": "DOLLS",
+            "character": "T-34"
+        },
+        {
+            "id": "sprites_DOLLS_T_34_ARM10090201_Battle",
+            "name": "ARM10090201_Battle",
+            "src": "sprites/DOLLS/T-34/ARM10090201_Battle.png",
+            "thumb": "sprites/DOLLS/T-34/ARM10090201_Battle.png",
+            "category": "DOLLS",
+            "character": "T-34"
+        },
+        {
+            "id": "sprites_DOLLS_T_34_ARM10090201_Normal",
+            "name": "ARM10090201_Normal",
+            "src": "sprites/DOLLS/T-34/ARM10090201_Normal.png",
+            "thumb": "sprites/DOLLS/T-34/ARM10090201_Normal.png",
+            "category": "DOLLS",
+            "character": "T-34"
+        },
+        {
+            "id": "sprites_DOLLS_T_34_ARM10099001_Battle",
+            "name": "ARM10099001_Battle",
+            "src": "sprites/DOLLS/T-34/ARM10099001_Battle.png",
+            "thumb": "sprites/DOLLS/T-34/ARM10099001_Battle.png",
+            "category": "DOLLS",
+            "character": "T-34"
+        },
+        {
+            "id": "sprites_DOLLS_T_34_ARM10099001_Normal",
+            "name": "ARM10099001_Normal",
+            "src": "sprites/DOLLS/T-34/ARM10099001_Normal.png",
+            "thumb": "sprites/DOLLS/T-34/ARM10099001_Normal.png",
+            "category": "DOLLS",
+            "character": "T-34"
+        },
+        {
+            "id": "sprites_DOLLS_T_34_ARM10099002_Battle",
+            "name": "ARM10099002_Battle",
+            "src": "sprites/DOLLS/T-34/ARM10099002_Battle.png",
+            "thumb": "sprites/DOLLS/T-34/ARM10099002_Battle.png",
+            "category": "DOLLS",
+            "character": "T-34"
+        },
+        {
+            "id": "sprites_DOLLS_T_34_ARM10099002_Normal",
+            "name": "ARM10099002_Normal",
+            "src": "sprites/DOLLS/T-34/ARM10099002_Normal.png",
+            "thumb": "sprites/DOLLS/T-34/ARM10099002_Normal.png",
+            "category": "DOLLS",
+            "character": "T-34"
         },
         {
             "id": "ARM10030101_Battle",
@@ -276,30 +328,6 @@
             "thumb": "sprites/NPC/格蕾特/NPC0002_Gretel_4.png",
             "category": "NPC",
             "character": "格蕾特"
-        },
-        {
-            "id": "alice_smile",
-            "name": "爱丽丝·微笑",
-            "src": "sprites/alice_smile.svg",
-            "thumb": "sprites/alice_smile.svg",
-            "category": "其他",
-            "character": "alice"
-        },
-        {
-            "id": "alice_think",
-            "name": "爱丽丝·思考",
-            "src": "sprites/alice_think.svg",
-            "thumb": "sprites/alice_think.svg",
-            "category": "其他",
-            "character": "alice"
-        },
-        {
-            "id": "bob_neutral",
-            "name": "Bob·平静",
-            "src": "sprites/bob_neutral.svg",
-            "thumb": "sprites/bob_neutral.svg",
-            "category": "其他",
-            "character": "bob"
         }
     ],
     "bgm": [],

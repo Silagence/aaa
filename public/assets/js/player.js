@@ -61,6 +61,11 @@
     function assetSrc(asset) {
         return 'assets/' + asset.src;
     }
+    // 立绘构图参数（编辑器保存，按素材 id 索引）
+    function spriteTransform(assetId) {
+        var t = work && work.manifest && work.manifest.spriteTransforms;
+        return (t && t[assetId]) || null;
+    }
 
     // ============ 加载配置 ============
     function loadWork() {
@@ -129,11 +134,12 @@
         switch (node.type) {
             case 'bg':     applyBg(node); nextNode(); break;
             case 'sprite': applySprite(node); nextNode(); break;
+            case 'spriteRemove': removeSprite(node); nextNode(); break;
             case 'bgm':    playBgm(node); nextNode(); break;
             case 'sfx':    playSfx(node); nextNode(); break;
             case 'say':    startSay(node); break;
             case 'choose': showChoices(node); break;
-            case 'var':    applyVar(node); nextNode(); break;
+            case 'var':    applyVar(node); runVarBranch(node); break;
             case 'goto':   enterScene(node.next); break;
             default:       nextNode();
         }
@@ -156,21 +162,40 @@
         }
     }
 
+    // 立绘实例：同一素材可被多个角色复用，因此 DOM id 必须按实例唯一，
+    // 不能只用素材 id，否则后插入的立绘会把先插入的顶掉。
+    var spriteSeq = 0;
+    function spriteDomId(assetId, character) {
+        return 'spr_' + assetId + '_' + (character || 'none') + '_' + (++spriteSeq);
+    }
+    // 该立绘实例代表的角色：优先取节点级 character，回退到素材自带值（兼容旧作品）
+    function spriteCharacter(node, asset) {
+        return node.character || (asset && asset.character) || '';
+    }
+
     function applySprite(node) {
         var a = resolveAsset('sprite', node.ref);
         var layer = $('spriteLayer');
         if (!a) return;
         var pos = node.position || 'center';
-        var id = 'spr_' + a.id;
-        var existing = document.getElementById(id);
-        if (existing) existing.remove();
+        var ch = spriteCharacter(node, a);
+        // 同一角色重复出场时替换旧实例，避免同角色叠出多个立绘
+        var old = layer.querySelector('.sprite[data-character="' + cssEsc(ch) + '"]');
+        if (old) old.remove();
         var div = el('div', 'sprite pos-' + pos);
-        div.id = id;
-        div.dataset.character = a.character || '';
+        div.id = spriteDomId(a.id, ch);
+        div.dataset.character = ch;
+        div.dataset.assetId = a.id;
         var img = new Image();
         img.src = assetSrc(a);
         img.alt = a.name || '';
         img.draggable = false;
+        // 套用编辑器里为该立绘保存的缩放/裁剪参数
+        var tf = spriteTransform(a.id);
+        if (tf) {
+            img.style.transform = 'translate(' + (tf.offsetX * 100) + '%, ' + (tf.offsetY * 100) + '%)' +
+                (tf.scale !== 1 ? ' scale(' + tf.scale + ')' : '');
+        }
         div.appendChild(img);
         layer.appendChild(div);
         // 新立绘需按当前说话角色立即应用高亮/变暗状态
@@ -184,6 +209,25 @@
             div.classList.add('is-in');
             div.style.transition = '';
         }
+    }
+
+    // 移除立绘：按角色和/或素材筛选，两者都为空时不操作
+    function removeSprite(node) {
+        var ch = node.character || '';
+        var ref = node.ref || '';
+        if (!ch && !ref) return;
+        var layer = $('spriteLayer');
+        var list = layer.querySelectorAll('.sprite');
+        Array.prototype.forEach.call(list, function (spr) {
+            var matchCh = !ch || spr.dataset.character === ch;
+            var matchRef = !ref || spr.dataset.assetId === ref;
+            if (matchCh && matchRef) spr.remove();
+        });
+    }
+
+    // 转义 CSS 属性选择器中的特殊字符（角色名可能含引号等）
+    function cssEsc(s) {
+        return String(s).replace(/["\\]/g, '\\$&');
     }
 
     function playBgm(node) {
@@ -341,7 +385,38 @@
         });
     }
 
-    // ============ 剧终 ============
+    // 求值 if 条件：{ var, op, value }。数值可比较时按数值比较，否则按字符串比较。
+    function evalCondition(c) {
+        if (!c || !c['var']) return false;
+        var left = variables[c['var']];
+        if (left === undefined) left = '';
+        var right = c.value === undefined ? '' : String(c.value);
+        var ln = parseFloat(left), rn = parseFloat(right);
+        var numeric = !isNaN(ln) && !isNaN(rn) &&
+            /^\s*[+-]?\d+(\.\d+)?\s*$/.test(String(left)) &&
+            /^\s*[+-]?\d+(\.\d+)?\s*$/.test(right);
+        var a = numeric ? ln : String(left);
+        var b = numeric ? rn : right;
+        switch (c.op) {
+            case '==': return a === b;
+            case '!=': return a !== b;
+            case '>':  return a > b;
+            case '>=': return a >= b;
+            case '<':  return a < b;
+            case '<=': return a <= b;
+        }
+        return false;
+    }
+
+    // var 节点的条件分支：条件成立跳转到 if.next，否则继续下一节点
+    function runVarBranch(node) {
+        if (node.if && evalCondition(node.if) && node.if.next && sceneMap[node.if.next]) {
+            enterScene(node.if.next);
+            return;
+        }
+        nextNode();
+    }
+
     function showEnding() {
         $('dialog').hidden = true;
         hideChoices();
@@ -409,10 +484,16 @@
         switch (node.type) {
             case 'bg': applyBg(node); break;
             case 'sprite': applySprite(node); break;
+            case 'spriteRemove': removeSprite(node); break;
             case 'bgm': playBgm(node); break;
             case 'sfx': break;
             case 'say': history.push({ speaker: node.speaker || '', text: node.text || '' }); break;
-            case 'var': applyVar(node); break;
+            case 'var':
+                applyVar(node);
+                if (node.if && evalCondition(node.if) && node.if.next && sceneMap[node.if.next]) {
+                    curSceneId = node.if.next; nodeIndex = -1;
+                }
+                break;
             case 'goto': if (node.next && sceneMap[node.next]) { curSceneId = node.next; nodeIndex = -1; } else { showEnding(); }
         }
     }

@@ -26,6 +26,9 @@
             <span id="saveState" class="topbar__save">已保存</span>
         </div>
         <div class="topbar__right">
+            <button id="btnUndo" class="btn btn--ghost btn--sm" type="button" title="撤销 (Ctrl+Z)" disabled>↶ 撤销</button>
+            <button id="btnRedo" class="btn btn--ghost btn--sm" type="button" title="重做 (Ctrl+Shift+Z)" disabled>↷ 重做</button>
+            <span class="topbar__sep"></span>
             <button id="btnImport" class="btn btn--ghost btn--sm" type="button">导入</button>
             <button id="btnExport" class="btn btn--ghost btn--sm" type="button">导出 JSON</button>
             <button id="btnPreview" class="btn btn--primary btn--sm" type="button">预览</button>
@@ -82,6 +85,7 @@
                     <span class="insertbar__label">插入节点：</span>
                     <button class="chip" data-insert="bg" type="button">背景</button>
                     <button class="chip" data-insert="sprite" type="button">立绘</button>
+                    <button class="chip" data-insert="spriteRemove" type="button">移除立绘</button>
                     <button class="chip" data-insert="bgm" type="button">BGM</button>
                     <button class="chip" data-insert="sfx" type="button">音效</button>
                     <button class="chip" data-insert="say" type="button">对话</button>
@@ -90,7 +94,15 @@
                     <button class="chip" data-insert="goto" type="button">跳转</button>
                 </div>
             </div>
+            <div class="center__viewbar">
+                <div class="tabs" id="viewTabs">
+                    <button class="tab is-active" data-view="nodes" type="button">节点</button>
+                    <button class="tab" data-view="outline" type="button">大纲</button>
+                </div>
+                <span class="center__viewhint" id="viewHint"></span>
+            </div>
             <div class="center__body" id="nodeList"></div>
+            <div class="center__body center__body--outline" id="outlineList" hidden></div>
             <div class="center__foot" id="emptyHint">
                 <p>当前场景暂无节点。</p>
                 <p>使用上方按钮插入节点，或从左侧素材库点击素材快速添加。</p>
@@ -139,6 +151,10 @@
         <div class="modal__box">
             <div class="modal__head">
                 <h3>导出配置文件</h3>
+                <div id="exportTabs" class="tabs tabs--sm">
+                    <button class="tab is-active" type="button" data-format="json">JSON</button>
+                    <button class="tab" type="button" data-format="txt">TXT 脚本</button>
+                </div>
                 <button id="closeModal" class="modal__close" type="button">×</button>
             </div>
             <div class="modal__body">
@@ -151,9 +167,28 @@
         </div>
     </div>
 
+    <!-- 导入校验结果模态框 -->
+    <div id="validateModal" class="modal" hidden>
+        <div class="modal__box">
+            <div class="modal__head">
+                <h3>配置校验未通过</h3>
+                <button id="closeValidate" class="modal__close" type="button">×</button>
+            </div>
+            <div class="modal__body">
+                <p id="validateSummary" class="validate-summary"></p>
+                <ul id="validateList" class="validate-list"></ul>
+            </div>
+            <div class="modal__foot">
+                <button id="btnForceImport" class="btn btn--ghost btn--sm" type="button" hidden>仍然导入</button>
+                <button id="btnCancelImport" class="btn btn--primary btn--sm" type="button">取消导入</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast 提示 -->
     <div id="toast" class="toast" hidden></div>
 
+    <script src="assets/js/sprite-crop.js"></script>
     <script src="assets/js/editor.js"></script>
 </body>
 </html>
