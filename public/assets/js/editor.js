@@ -56,6 +56,10 @@
         assetView: 'grid'   // 素材库视图：grid（网格）/ list（列表）
     };
 
+    // 素材拖拽插入：拖拽中的素材与当前插入位置（null 表示追加到末尾）
+    var dragAsset = null;
+    var dropIndex = null;
+
     function newWork() {
         return {
             manifest: {
@@ -584,6 +588,20 @@
             card.appendChild(adj);
         }
         card.addEventListener('click', function () { onAssetClick(item); });
+        // 拖拽插入剧本（需求 4.2.4 第 3 点）：拖到中栏节点列表的插入位置
+        card.draggable = true;
+        card.addEventListener('dragstart', function (e) {
+            dragAsset = { tab: state.activeAssetTab, item: item };
+            e.dataTransfer.effectAllowed = 'copy';
+            // 部分浏览器要求必须写入数据，拖拽才会真正开始
+            try { e.dataTransfer.setData('text/plain', item.id); } catch (err) {}
+            card.classList.add('is-dragging');
+        });
+        card.addEventListener('dragend', function () {
+            dragAsset = null;
+            card.classList.remove('is-dragging');
+            clearDropHint();
+        });
         return card;
     }
 
@@ -599,23 +617,86 @@
     }
 
     // 点击素材 → 在当前场景插入对应节点
-    function onAssetClick(item) {
+    // 由素材生成节点：立绘的角色默认取素材自带的 character，
+    // 用户可在属性面板改成别的角色，从而支持多个角色复用同一张立绘并各自独立高亮/变暗
+    function nodeFromAsset(tab, item) {
+        var node = defaultNode(tab);
+        node.ref = item.id;
+        if (tab === 'sprite') node.character = item.character || '';
+        return node;
+    }
+
+    // 插入素材节点：index 为 null 时追加到末尾
+    function insertAssetNode(tab, item, index) {
         var sc = currentScene();
         if (!sc) { toast('请先创建/选中场景', 'err'); return; }
-        var type = state.activeAssetTab; // bg/sprite/bgm/sfx 与节点 type 同名
-        var node = defaultNode(type);
-        node.ref = item.id;
-        // 立绘的角色默认取素材自带的 character，用户可在属性面板改成别的角色，
-        // 从而支持多个角色复用同一张立绘并各自独立高亮/变暗
-        if (type === 'sprite') node.character = item.character || '';
-        sc.nodes.push(node);
-        state.selectedNodeIndex = sc.nodes.length - 1;
+        var node = nodeFromAsset(tab, item);
+        if (index === null || index === undefined || index < 0 || index > sc.nodes.length) {
+            index = sc.nodes.length;
+        }
+        sc.nodes.splice(index, 0, node);
+        state.selectedNodeIndex = index;
         try {
             commit();
         } catch (e) {
-            console.error('renderAll failed after asset click', e);
+            console.error('renderAll failed after asset insert', e);
         }
-        toast('已插入 ' + (NODE_LABELS[type] || type) + ' 节点');
+        toast('已插入 ' + (NODE_LABELS[tab] || tab) + ' 节点');
+    }
+
+    function onAssetClick(item) {
+        insertAssetNode(state.activeAssetTab, item, null);
+    }
+
+    // ============ 素材拖拽插入（需求 4.2.4 第 3 点） ============
+    // 拖到节点卡片上半部 → 插到该节点之前；下半部 → 之后；拖到空白处 → 追加到末尾
+    function clearDropHint() {
+        dropIndex = null;
+        var box = $('nodeList');
+        if (!box) return;
+        Array.prototype.forEach.call(box.querySelectorAll('.node'), function (n) {
+            n.classList.remove('is-drop-before', 'is-drop-after');
+        });
+        box.classList.remove('is-drop-end');
+    }
+
+    function bindNodeDrop() {
+        var box = $('nodeList');
+        if (!box) return;
+
+        box.addEventListener('dragover', function (e) {
+            if (!dragAsset) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            var card = e.target.closest ? e.target.closest('.node') : null;
+            clearDropHint();
+            if (card) {
+                var r = card.getBoundingClientRect();
+                var after = (e.clientY - r.top) > r.height / 2;
+                dropIndex = Number(card.dataset.index) + (after ? 1 : 0);
+                card.classList.add(after ? 'is-drop-after' : 'is-drop-before');
+            } else {
+                // 空白区域：追加到末尾
+                dropIndex = currentScene() ? currentScene().nodes.length : null;
+                box.classList.add('is-drop-end');
+            }
+        });
+
+        box.addEventListener('dragleave', function (e) {
+            if (!dragAsset) return;
+            // 仅当真正离开列表容器时才清除提示
+            if (!box.contains(e.relatedTarget)) clearDropHint();
+        });
+
+        box.addEventListener('drop', function (e) {
+            if (!dragAsset) return;
+            e.preventDefault();
+            var d = dragAsset;
+            var idx = dropIndex;
+            clearDropHint();
+            dragAsset = null;
+            insertAssetNode(d.tab, d.item, idx);
+        });
     }
 
     // ============ 渲染：场景列表 ============
@@ -728,6 +809,7 @@
         sc.nodes.forEach(function (node, i) {
             var card = el('div', 'node node--' + node.type +
                 (i === state.selectedNodeIndex ? ' is-selected' : ''));
+            card.dataset.index = String(i);
             card.appendChild(el('div', 'node__index', String(i + 1)));
             // 背景/立绘节点展示素材缩略图
             var thumb = buildNodeThumb(node);
@@ -1955,6 +2037,7 @@
             if (e.target && e.target.tagName === 'IMG') e.preventDefault();
         });
         document.addEventListener('dragstart', function (e) {
+            // 素材卡片允许拖拽插入剧本，其余图片（含卡片内缩略图）禁止拖拽
             if (e.target && e.target.tagName === 'IMG') e.preventDefault();
         });
     }
@@ -1967,6 +2050,7 @@
         ensureFirstScene();
 
         bindEvents();
+        bindNodeDrop();
         // 加载素材后渲染
         loadAssets(function () {
             renderAll();

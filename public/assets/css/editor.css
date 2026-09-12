@@ -664,6 +664,12 @@
 .node:hover { border-color: rgba(110, 168, 255, 0.4); }
 .node.is-selected { border-color: var(--accent); background: rgba(110, 168, 255, 0.08); }
 
+/* ===== 素材拖拽插入提示 ===== */
+.asset-item.is-dragging { opacity: 0.45; }
+.node.is-drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
+.node.is-drop-after { box-shadow: 0 3px 0 0 var(--accent); }
+.center__body.is-drop-end { background: rgba(110, 168, 255, 0.06); }
+
 .node__index {
     flex: 0 0 auto;
     display: flex;
