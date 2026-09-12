@@ -1658,10 +1658,7 @@
             var typeMap = { backgrounds: 'bg', sprites: 'sprite', bgm: 'bgm', sfx: 'sfx' };
             var t = typeMap[k];
             state.assets[k].forEach(function (a) {
-                var item = { type: t, id: a.id, src: a.src };
-                // 立绘需要带上 character，播放器据此做说话角色高亮/变暗
-                if (a.character) item.character = a.character;
-                assets.push(item);
+                assets.push({ type: t, id: a.id, src: a.src });
             });
         });
         return {

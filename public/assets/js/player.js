@@ -17,6 +17,7 @@
     var work = null;            // { manifest, assets[], scenes[] }
     var sceneMap = {};          // id -> scene
     var assetMap = {};          // type|id -> asset
+    var spriteCharMap = {};     // 素材 id -> 角色名（来自 manifest，用于说话角色高亮）
     var variables = {};         // 运行时变量
     var history = [];           // 历史对话
     var curSceneId = null;
@@ -72,6 +73,22 @@
     }
 
     // ============ 加载配置 ============
+    // 素材清单（manifest.json）：提供立绘的角色名等元信息，加载失败不影响播放
+    var manifest = { sprites: [] };
+    function loadManifest(cb) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', 'assets/manifest.json', true);
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            if (xhr.status === 200) {
+                try { manifest = JSON.parse(xhr.responseText) || manifest; }
+                catch (e) { console.warn('manifest 解析失败', e); }
+            }
+            cb();
+        };
+        xhr.send();
+    }
+
     function loadWork() {
         try {
             var raw = localStorage.getItem(PREVIEW_KEY);
@@ -91,6 +108,15 @@
         assetMap = {};
         (work.assets || []).forEach(function (a) {
             assetMap[a.type + '|' + a.id] = a;
+        });
+
+        // 立绘素材 id -> 角色名：优先取作品配置里的 assets，回退到 manifest.json
+        spriteCharMap = {};
+        (work.assets || []).forEach(function (a) {
+            if (a.type === 'sprite' && a.character) spriteCharMap[a.id] = a.character;
+        });
+        (manifest.sprites || []).forEach(function (s) {
+            if (s.character && !spriteCharMap[s.id]) spriteCharMap[s.id] = s.character;
         });
 
         // 默认起始场景
@@ -176,7 +202,7 @@
     }
     // 该立绘实例代表的角色：优先取节点级 character，回退到素材自带值（兼容旧作品）
     function spriteCharacter(node, asset) {
-        return node.character || (asset && asset.character) || '';
+        return node.character || (asset && spriteCharMap[asset.id]) || '';
     }
 
     function applySprite(node) {
@@ -271,7 +297,7 @@
         var hasAny = Object.keys(set).length > 0;
         Array.prototype.forEach.call(sprites, function (spr) {
             var ch = spr.dataset.character || '';
-            var isSpeaker = hasAny && set[ch];
+            var isSpeaker = !!(hasAny && set[ch]);
             spr.classList.toggle('is-speaker', isSpeaker);
             spr.classList.toggle('is-dim', hasAny && !isSpeaker);
         });
@@ -800,10 +826,12 @@
         guardAssets();
         loadCfg();
         bindSettings();
-        if (!loadWork()) return;
-        loadRead();
-        bind();
-        enterScene(curSceneId);
+        loadManifest(function () {
+            if (!loadWork()) return;
+            loadRead();
+            bind();
+            enterScene(curSceneId);
+        });
     }
 
     if (document.readyState === 'loading') {
