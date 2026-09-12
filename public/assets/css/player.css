@@ -59,16 +59,24 @@
     transition: opacity 0.4s ease, transform 0.4s ease, filter 0.4s ease;
 }
 .sprite.is-in { opacity: 1; }
+
+/* ===== 立绘进入动画（需求 4.3.3） =====
+   位移/缩放通过 CSS 变量叠加，避免覆盖 pos-* 的水平居中位移 */
+.sprite.anim-moveIn { --anim-x: 0px; --anim-y: 40px; --anim-s: 1; }
+.sprite.anim-zoomIn { --anim-x: 0px; --anim-y: 0px;  --anim-s: 0.82; }
+.sprite.anim-fadeIn { --anim-x: 0px; --anim-y: 0px;  --anim-s: 1; }
+.sprite.anim-none   { --anim-x: 0px; --anim-y: 0px;  --anim-s: 1; transition: none; }
+
+.sprite.pos-left   { left: 8%;  transform: translate(var(--anim-x, 0px), var(--anim-y, 0px)) scale(var(--anim-s, 1)); }
+.sprite.pos-center { left: 50%; transform: translateX(-50%) translate(var(--anim-x, 0px), var(--anim-y, 0px)) scale(var(--anim-s, 1)); }
+.sprite.pos-right  { right: 8%; transform: translate(var(--anim-x, 0px), var(--anim-y, 0px)) scale(var(--anim-s, 1)); }
+
+.sprite.is-in { --anim-x: 0px; --anim-y: 0px; --anim-s: 1; }
+
 /* 说话角色高亮 / 其他角色变暗（dim 规则放最后并提高特异性，确保覆盖 speaker） */
 .sprite.is-speaker { filter: brightness(1.08); }
 .sprite.is-dim,
 .sprite.is-dim.is-speaker { filter: brightness(0.45) saturate(0.7); }
-.sprite.pos-left   { left: 8%;  transform: translateY(10px); }
-.sprite.pos-left.is-in   { transform: translateY(0); }
-.sprite.pos-center { left: 50%; transform: translateX(-50%) translateY(10px); }
-.sprite.pos-center.is-in { transform: translateX(-50%) translateY(0); }
-.sprite.pos-right  { right: 8%; transform: translateY(10px); }
-.sprite.pos-right.is-in  { transform: translateY(0); }
 .sprite img { height: 100%; display: block; }
 
 /* ===== 对话框 ===== */

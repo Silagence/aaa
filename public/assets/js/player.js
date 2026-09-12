@@ -209,6 +209,13 @@
         return node.character || (asset && spriteCharMap[asset.id]) || '';
     }
 
+    // 立绘进入动画（需求 4.3.3）：fadeIn 淡入 / moveIn 位移 / zoomIn 缩放 / none 直接出现
+    var SPRITE_ANIMS = ['fadeIn', 'moveIn', 'zoomIn', 'none'];
+    function spriteAnim(node) {
+        var a = node.animation || '';
+        return SPRITE_ANIMS.indexOf(a) >= 0 ? a : 'fadeIn';
+    }
+
     function applySprite(node) {
         var a = resolveAsset('sprite', node.ref);
         var layer = $('spriteLayer');
@@ -218,7 +225,8 @@
         // 同一角色重复出场时替换旧实例，避免同角色叠出多个立绘
         var old = layer.querySelector('.sprite[data-character="' + cssEsc(ch) + '"]');
         if (old) old.remove();
-        var div = el('div', 'sprite pos-' + pos);
+        var anim = spriteAnim(node);
+        var div = el('div', 'sprite pos-' + pos + ' anim-' + anim);
         div.id = spriteDomId(a.id, ch);
         div.dataset.character = ch;
         div.dataset.assetId = a.id;
@@ -236,14 +244,13 @@
         layer.appendChild(div);
         // 新立绘需按当前说话角色立即应用高亮/变暗状态
         updateSpeakerHighlight(curSpeakers);
-        // 触发进入动画
-        requestAnimationFrame(function () {
+        // 触发进入动画：none 直接落到终态，其余在下一帧加 is-in 让 CSS 过渡生效
+        if (anim === 'none') {
             div.classList.add('is-in');
-        });
-        if (node.animation === 'none') {
-            div.style.transition = 'none';
-            div.classList.add('is-in');
-            div.style.transition = '';
+        } else {
+            requestAnimationFrame(function () {
+                div.classList.add('is-in');
+            });
         }
     }
 

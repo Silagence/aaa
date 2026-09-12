@@ -25,7 +25,7 @@
         switch (type) {
             case 'bg':     return { type: 'bg',     ref: '', transition: 'fade' };
             // character 为节点级字段：同一素材可被多个角色复用，各自独立高亮/变暗
-            case 'sprite': return { type: 'sprite', ref: '', character: '', position: 'center', animation: '' };
+            case 'sprite': return { type: 'sprite', ref: '', character: '', position: 'center', animation: 'fadeIn' };
             case 'spriteRemove': return { type: 'spriteRemove', character: '', ref: '' };
             case 'bgm':    return { type: 'bgm',    ref: '', loop: true };
             case 'sfx':    return { type: 'sfx',    ref: '' };
@@ -1089,9 +1089,8 @@
         var pos = selectInput(['left', 'center', 'right'], n.position || 'center');
         pos.addEventListener('change', function () { n.position = pos.value; commit(); });
         w.appendChild(fieldRow('位置', '')).appendChild(pos);
-        var ani = textInput(n.animation || '', '动画 fadeIn/none');
-        // 输入时仅刷新中栏节点预览，不调用 renderAll，避免属性面板重建导致失焦
-        ani.addEventListener('input', function () { n.animation = ani.value; refreshActiveNodeCard(); markDirty(); pushHistory('sprite.animation'); });
+        var ani = selectInput(['fadeIn', 'moveIn', 'zoomIn', 'none'], n.animation || 'fadeIn');
+        ani.addEventListener('change', function () { n.animation = ani.value; refreshActiveNodeCard(); markDirty(); pushHistory('sprite.animation'); });
         w.appendChild(fieldRow('动画', '')).appendChild(ani);
     }
     // 移除立绘：按角色撤下画面上对应的立绘（同素材多角色时用于单独撤下）
