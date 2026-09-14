@@ -20,6 +20,7 @@ use App\Models\Work;
 use App\Models\WorkRevision;
 use App\Services\Auth;
 use App\Services\AvatarService;
+use App\Services\BlockWord;
 
 class WorkController extends Controller
 {
@@ -452,6 +453,11 @@ class WorkController extends Controller
             $this->json(['ok' => false, 'message' => '作品名称不能超过 120 个字符'], 422);
             return;
         }
+        $blocked = BlockWord::validate($title, '作品名称');
+        if ($blocked !== null) {
+            $this->json(['ok' => false, 'message' => $blocked], 422);
+            return;
+        }
         if (mb_strlen($description) > 500) {
             $this->json(['ok' => false, 'message' => '作品简介不能超过 500 个字符'], 422);
             return;
@@ -596,6 +602,11 @@ class WorkController extends Controller
         }
         if (mb_strlen($title) > 120) {
             $this->json(['ok' => false, 'message' => '作品名称不能超过 120 个字符'], 422);
+            return;
+        }
+        $blocked = BlockWord::validate($title, '作品名称');
+        if ($blocked !== null) {
+            $this->json(['ok' => false, 'message' => $blocked], 422);
             return;
         }
 
@@ -744,9 +755,19 @@ class WorkController extends Controller
 
         $userId = Auth::id();
         $workAuthorId = (int) $work['user_id'];
+
+        // 一次性取出本页顶级评论下的回复，避免逐条查询
+        $parentIds = array_map(static fn(array $row): int => (int) $row['id'], $result['items']);
+        $replies = Comment::repliesByParents($parentIds);
+
         $items = [];
         foreach ($result['items'] as $row) {
-            $items[] = $this->formatComment($row, $userId, $workAuthorId);
+            $comment = $this->formatComment($row, $userId, $workAuthorId);
+            $comment['replies'] = [];
+            foreach ($replies[(int) $row['id']] ?? [] as $replyRow) {
+                $comment['replies'][] = $this->formatComment($replyRow, $userId, $workAuthorId);
+            }
+            $items[] = $comment;
         }
 
         $this->json([
@@ -759,10 +780,10 @@ class WorkController extends Controller
     }
 
     /**
-     * 发表评论（需登录）
+     * 发表评论 / 回复（需登录）
      *
      * POST /api/works/{id}/comments
-     * 参数：content
+     * 参数：content、parent_id（选填，回复某条顶级评论时传入）
      */
     public function commentStore(string $id): void
     {
@@ -788,6 +809,26 @@ class WorkController extends Controller
             $this->json(['ok' => false, 'message' => '评论最多 ' . Comment::MAX_LENGTH . ' 字'], 422);
             return;
         }
+        $blocked = BlockWord::validate($content, '评论内容');
+        if ($blocked !== null) {
+            $this->json(['ok' => false, 'message' => $blocked], 422);
+            return;
+        }
+
+        // 回复：仅允许挂到本作品下的顶级评论，避免出现多级嵌套
+        $parentId = (int) $this->input('parent_id', 0);
+        if ($parentId > 0) {
+            $parent = Comment::findVisible($parentId);
+            if ($parent === null || (int) $parent['work_id'] !== $workId) {
+                $this->json(['ok' => false, 'message' => '要回复的评论不存在'], 404);
+                return;
+            }
+            if ((int) $parent['parent_id'] !== 0) {
+                $parentId = (int) $parent['parent_id'];
+            }
+        } else {
+            $parentId = 0;
+        }
 
         // 发表限频：同一用户 60 秒内最多 5 条，防止刷屏
         if (!$this->allowComment($userId)) {
@@ -796,16 +837,17 @@ class WorkController extends Controller
         }
 
         $commentId = Comment::create([
-            'work_id' => $workId,
-            'user_id' => $userId,
-            'content' => $content,
-            'status'  => 1,
+            'work_id'   => $workId,
+            'user_id'   => $userId,
+            'parent_id' => $parentId,
+            'content'   => $content,
+            'status'    => 1,
         ]);
 
         $row = Comment::findVisible($commentId);
         $this->json([
             'ok'      => true,
-            'message' => '评论已发表',
+            'message' => $parentId > 0 ? '回复已发表' : '评论已发表',
             'comment' => $row !== null ? $this->formatComment($row, $userId, (int) $work['user_id']) : null,
             'total'   => Comment::countByWork($workId),
         ]);
@@ -874,6 +916,7 @@ class WorkController extends Controller
 
         return [
             'id'         => (int) $row['id'],
+            'parent_id'  => (int) ($row['parent_id'] ?? 0),
             'content'    => (string) $row['content'],
             'created_at' => (string) $row['created_at'],
             'author'     => $nickname !== '' ? $nickname : $email,

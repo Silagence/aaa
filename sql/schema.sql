@@ -96,11 +96,13 @@ CREATE TABLE IF NOT EXISTS `comments` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `work_id`    BIGINT UNSIGNED NOT NULL COMMENT 'commented work id',
   `user_id`    BIGINT UNSIGNED NOT NULL COMMENT 'comment author user id',
+  `parent_id`  BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'parent comment id, 0 = top level',
   `content`    VARCHAR(500)    NOT NULL DEFAULT '' COMMENT 'comment content',
   `status`     TINYINT         NOT NULL DEFAULT 1 COMMENT 'status: 1 visible / 0 hidden',
   `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_comments_work` (`work_id`, `status`, `created_at`)
+  KEY `idx_comments_work` (`work_id`, `status`, `created_at`),
+  KEY `idx_comments_parent` (`parent_id`, `status`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='work comments';
 
 -- ---------------------------------------------------------------------------

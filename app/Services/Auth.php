@@ -82,6 +82,12 @@ class Auth
         if (mb_strlen($nickname) > 50) {
             return '昵称长度不能超过 50 个字符';
         }
+        if ($nickname !== '') {
+            $blocked = BlockWord::validate($nickname, '昵称');
+            if ($blocked !== null) {
+                return $blocked;
+            }
+        }
 
         return null;
     }
@@ -186,6 +192,10 @@ class Auth
         }
         if (mb_strlen($nickname) > 50) {
             return ['ok' => false, 'message' => '昵称长度不能超过 50 个字符'];
+        }
+        $blocked = BlockWord::validate($nickname, '昵称');
+        if ($blocked !== null) {
+            return ['ok' => false, 'message' => $blocked];
         }
         if (mb_strlen($bio) > 255) {
             return ['ok' => false, 'message' => '个人简介不能超过 255 个字符'];

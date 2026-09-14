@@ -17,13 +17,18 @@ class Comment extends Model
 {
     protected static string $table = 'comments';
 
-    protected static array $fillable = ['work_id', 'user_id', 'content', 'status'];
+    protected static array $fillable = ['work_id', 'user_id', 'parent_id', 'content', 'status'];
 
     /** 单条评论最大字数 */
     public const MAX_LENGTH = 500;
 
+    /** 每条评论最多展示的回复数 */
+    public const MAX_REPLIES = 50;
+
     /**
-     * 分页查询某作品的可见评论（按时间倒序）
+     * 分页查询某作品的可见顶级评论（按时间倒序）
+     *
+     * 回复（parent_id > 0）不参与分页，随所属顶级评论一并返回。
      *
      * @return array{items: array, total: int, page: int, perPage: int, pages: int}
      */
@@ -31,7 +36,7 @@ class Comment extends Model
     {
         $perPage = max(1, min(50, $perPage));
         $total = (int) DB::value(
-            'SELECT COUNT(*) FROM `comments` WHERE work_id = ? AND status = 1',
+            'SELECT COUNT(*) FROM `comments` WHERE work_id = ? AND parent_id = 0 AND status = 1',
             [$workId]
         );
         $pages = max(1, (int) ceil($total / $perPage));
@@ -39,11 +44,11 @@ class Comment extends Model
         $offset = ($page - 1) * $perPage;
 
         $items = DB::select(
-            'SELECT c.id, c.work_id, c.user_id, c.content, c.created_at,
+            'SELECT c.id, c.work_id, c.user_id, c.parent_id, c.content, c.created_at,
                     u.nickname AS author_nickname, u.email AS author_email, u.avatar AS author_avatar
              FROM `comments` c
              LEFT JOIN `users` u ON u.id = c.user_id
-             WHERE c.work_id = ? AND c.status = 1
+             WHERE c.work_id = ? AND c.parent_id = 0 AND c.status = 1
              ORDER BY c.id DESC
              LIMIT ' . $perPage . ' OFFSET ' . $offset,
             [$workId]
@@ -59,12 +64,43 @@ class Comment extends Model
     }
 
     /**
+     * 查询一批顶级评论下的可见回复（按时间正序，便于阅读）
+     *
+     * @param int[] $parentIds 顶级评论 ID 列表
+     * @return array<int, array> 以 parent_id 为键分组的回复列表
+     */
+    public static function repliesByParents(array $parentIds): array
+    {
+        $parentIds = array_values(array_unique(array_filter(array_map('intval', $parentIds))));
+        if (!$parentIds) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($parentIds), '?'));
+        $rows = DB::select(
+            'SELECT c.id, c.work_id, c.user_id, c.parent_id, c.content, c.created_at,
+                    u.nickname AS author_nickname, u.email AS author_email, u.avatar AS author_avatar
+             FROM `comments` c
+             LEFT JOIN `users` u ON u.id = c.user_id
+             WHERE c.parent_id IN (' . $placeholders . ') AND c.status = 1
+             ORDER BY c.id ASC',
+            $parentIds
+        );
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $grouped[(int) $row['parent_id']][] = $row;
+        }
+        return $grouped;
+    }
+
+    /**
      * 按 ID 查找可见评论（带出作者信息）
      */
     public static function findVisible(int $id): ?array
     {
         return DB::first(
-            'SELECT c.id, c.work_id, c.user_id, c.content, c.created_at,
+            'SELECT c.id, c.work_id, c.user_id, c.parent_id, c.content, c.created_at,
                     u.nickname AS author_nickname, u.email AS author_email, u.avatar AS author_avatar
              FROM `comments` c
              LEFT JOIN `users` u ON u.id = c.user_id
@@ -75,18 +111,25 @@ class Comment extends Model
     }
 
     /**
-     * 软删除评论
+     * 软删除评论；若为顶级评论，同时软删除其下所有回复
      */
     public static function softDelete(int $id): int
     {
-        return DB::execute(
+        $affected = DB::execute(
             'UPDATE `comments` SET status = 0 WHERE id = ? AND status = 1',
             [$id]
         );
+        if ($affected > 0) {
+            DB::execute(
+                'UPDATE `comments` SET status = 0 WHERE parent_id = ? AND status = 1',
+                [$id]
+            );
+        }
+        return $affected;
     }
 
     /**
-     * 统计某作品的可见评论数
+     * 统计某作品的可见评论数（含回复）
      */
     public static function countByWork(int $workId): int
     {

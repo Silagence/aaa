@@ -1050,6 +1050,58 @@
     font-size: 12px;
 }
 
+/* 评论操作区（回复 / 删除） */
+.comment-item__actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 6px;
+}
+
+.comment-item__reply {
+    font-size: 12px;
+}
+
+/* 楼中楼：回复列表 */
+.comment-replies {
+    margin: 10px 0 0;
+    padding: 0 0 0 12px;
+    list-style: none;
+    border-left: 2px solid var(--border);
+}
+
+.comment-replies .comment-item {
+    padding: 10px 0;
+    border-top: 0;
+}
+
+.comment-replies .comment-item:first-child {
+    padding-top: 0;
+}
+
+.comment-replies .comment-item__avatar {
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
+}
+
+.comment-replies .comment-item__text {
+    font-size: 13px;
+}
+
+/* 回复输入框 */
+.comment-reply-form {
+    margin-top: 10px;
+}
+
+.comment-reply-form__foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
 .comment-empty {
     padding: 20px 0;
     text-align: center;

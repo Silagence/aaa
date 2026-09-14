@@ -7,6 +7,7 @@
     var ctx = window.DRAMATOOL_DETAIL || {};
     var base = ((window.DRAMATOOL_CTX || {}).baseUrl || '/').replace(/\/+$/, '');
     var csrf = (window.DRAMATOOL_CTX || {}).csrfToken || '';
+    var maxLen = parseInt(ctx.maxLength, 10) || 500;
 
     function $(id) { return document.getElementById(id); }
 
@@ -284,6 +285,14 @@
             ? '<img class="comment-item__avatar-img" src="' + escapeHtml(c.avatar) + '" alt="">'
             : escapeHtml((c.author || '?').slice(0, 1));
 
+        var actions = '';
+        if (ctx.loggedIn) {
+            actions += '<button class="link comment-item__reply" type="button" data-id="' + c.id + '">回复</button>';
+        }
+        if (c.can_delete) {
+            actions += '<button class="link link--danger comment-item__del" type="button" data-id="' + c.id + '">删除</button>';
+        }
+
         li.innerHTML =
             '<span class="comment-item__avatar">' + avatar + '</span>' +
             '<div class="comment-item__body">' +
@@ -292,10 +301,28 @@
                     '<span class="comment-item__time">' + escapeHtml(formatTime(c.created_at)) + '</span>' +
                 '</div>' +
                 '<p class="comment-item__text">' + escapeHtml(c.content).replace(/\n/g, '<br>') + '</p>' +
-            '</div>' +
-            (c.can_delete
-                ? '<button class="link link--danger comment-item__del" type="button" data-id="' + c.id + '">删除</button>'
-                : '');
+                (actions ? '<div class="comment-item__actions">' + actions + '</div>' : '') +
+            '</div>';
+        return li;
+    }
+
+    // 顶级评论节点：正文 + 回复列表 + 回复表单挂载点
+    function commentThreadNode(c) {
+        var li = commentNode(c);
+        li.classList.add('comment-thread');
+
+        var body = li.querySelector('.comment-item__body');
+        var replies = document.createElement('ul');
+        replies.className = 'comment-replies';
+        replies.setAttribute('data-parent', c.id);
+        (c.replies || []).forEach(function (r) { replies.appendChild(commentNode(r)); });
+        body.appendChild(replies);
+
+        var form = document.createElement('div');
+        form.className = 'comment-reply-form';
+        form.hidden = true;
+        body.appendChild(form);
+
         return li;
     }
 
@@ -308,7 +335,84 @@
             list.innerHTML = '<li class="comment-empty">还没有评论，来抢沙发吧。</li>';
             return;
         }
-        items.forEach(function (c) { list.appendChild(commentNode(c)); });
+        items.forEach(function (c) { list.appendChild(commentThreadNode(c)); });
+    }
+
+    // 在指定顶级评论下插入一条回复
+    function appendReply(parentId, reply) {
+        var thread = $('commentList').querySelector('.comment-thread[data-id="' + parentId + '"]');
+        if (!thread) return;
+        var replies = thread.querySelector('.comment-replies');
+        if (replies) replies.appendChild(commentNode(reply));
+    }
+
+    // 展开/收起某条评论的回复输入框
+    function toggleReplyForm(thread, targetId) {
+        var box = thread.querySelector('.comment-reply-form');
+        if (!box) return;
+
+        // 再次点击同一按钮则收起
+        if (!box.hidden && box.getAttribute('data-target') === String(targetId)) {
+            box.hidden = true;
+            box.innerHTML = '';
+            box.removeAttribute('data-target');
+            return;
+        }
+
+        box.setAttribute('data-target', targetId);
+        box.innerHTML =
+            '<textarea class="field__input field__input--area" rows="2" maxlength="' + maxLen + '" ' +
+                'placeholder="回复 ' + escapeHtml(thread.querySelector('.comment-item__author').textContent) + '…"></textarea>' +
+            '<div class="comment-reply-form__foot">' +
+                '<button class="btn btn--primary btn--sm" type="button" data-act="submit">回复</button>' +
+                '<button class="link" type="button" data-act="cancel">取消</button>' +
+            '</div>';
+        box.hidden = false;
+        var ta = box.querySelector('textarea');
+        if (ta) ta.focus();
+    }
+
+    function submitReply(thread, targetId, box) {
+        var ta = box.querySelector('textarea');
+        var content = ta ? ta.value.trim() : '';
+        if (!content) { toast('回复内容不能为空'); return; }
+
+        var btn = box.querySelector('[data-act="submit"]');
+        if (btn) btn.disabled = true;
+
+        var body = new URLSearchParams();
+        body.append('content', content);
+        body.append('parent_id', targetId);
+        body.append('_token', csrf);
+
+        fetch(base + '/api/works/' + encodeURIComponent(ctx.workId) + '/comments', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            credentials: 'same-origin',
+            body: body.toString()
+        }).then(function (res) {
+            return res.json().catch(function () { return { ok: false, message: '响应解析失败' }; });
+        }).then(function (res) {
+            if (btn) btn.disabled = false;
+            if (!res.ok) {
+                toast(res.message || '回复失败');
+                return;
+            }
+            var parentId = thread.getAttribute('data-id');
+            if (res.comment) appendReply(parentId, res.comment);
+            box.hidden = true;
+            box.innerHTML = '';
+            box.removeAttribute('data-target');
+            $('commentCount').textContent = res.total;
+            toast('回复已发表', 'ok');
+        }).catch(function () {
+            if (btn) btn.disabled = false;
+            toast('网络异常，回复失败');
+        });
     }
 
     function loadComments(page) {
@@ -348,8 +452,32 @@
             more.addEventListener('click', function () { loadComments(commentPage + 1); });
         }
 
-        // 删除评论（事件委托）
+        // 删除评论 / 回复（事件委托）
         list.addEventListener('click', function (e) {
+            // 展开回复输入框
+            var replyBtn = e.target.closest('.comment-item__reply');
+            if (replyBtn) {
+                var thread = replyBtn.closest('.comment-thread');
+                if (thread) toggleReplyForm(thread, replyBtn.getAttribute('data-id'));
+                return;
+            }
+
+            // 回复表单内的提交 / 取消
+            var actBtn = e.target.closest('.comment-reply-form [data-act]');
+            if (actBtn) {
+                var box = actBtn.closest('.comment-reply-form');
+                var threadEl = actBtn.closest('.comment-thread');
+                if (!box || !threadEl) return;
+                if (actBtn.getAttribute('data-act') === 'cancel') {
+                    box.hidden = true;
+                    box.innerHTML = '';
+                    box.removeAttribute('data-target');
+                    return;
+                }
+                submitReply(threadEl, box.getAttribute('data-target'), box);
+                return;
+            }
+
             var btn = e.target.closest('.comment-item__del');
             if (!btn) return;
             if (!window.confirm('确定删除这条评论吗？')) return;
@@ -375,7 +503,8 @@
                     toast(res.message || '删除失败');
                     return;
                 }
-                var item = btn.closest('.comment-item');
+                // 删除顶级评论时连同其回复一起移除
+                var item = btn.closest('.comment-thread') || btn.closest('.comment-item');
                 if (item) item.parentNode.removeChild(item);
                 $('commentCount').textContent = res.total;
                 if (!$('commentList').children.length) {
@@ -428,7 +557,7 @@
                     var listEl = $('commentList');
                     var empty = listEl.querySelector('.comment-empty');
                     if (empty) listEl.innerHTML = '';
-                    if (res.comment) listEl.insertBefore(commentNode(res.comment), listEl.firstChild);
+                    if (res.comment) listEl.insertBefore(commentThreadNode(res.comment), listEl.firstChild);
                     toast('评论已发表', 'ok');
                 }).catch(function () {
                     btn.disabled = false;
@@ -439,9 +568,8 @@
             // 字数提示
             var input = $('commentInput');
             input.addEventListener('input', function () {
-                var max = parseInt(input.getAttribute('maxlength'), 10) || 500;
                 var len = input.value.length;
-                $('commentHint').textContent = len > max - 50 ? (len + ' / ' + max) : '';
+                $('commentHint').textContent = len > maxLen - 50 ? (len + ' / ' + maxLen) : '';
             });
         }
     }

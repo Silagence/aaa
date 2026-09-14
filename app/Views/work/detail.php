@@ -182,10 +182,11 @@ require __DIR__ . '/../partials/app_head.php';
 
     <script>
         window.DRAMATOOL_DETAIL = <?= json_encode([
-            'workId'   => (int) $work['id'],
-            'shareUrl' => $shareUrl,
-            'embedUrl' => base_url('embed/' . $code),
-            'loggedIn' => $user !== null,
+            'workId'    => (int) $work['id'],
+            'shareUrl'  => $shareUrl,
+            'embedUrl'  => base_url('embed/' . $code),
+            'loggedIn'  => $user !== null,
+            'maxLength' => (int) \App\Models\Comment::MAX_LENGTH,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     </script>
     <script src="<?= e(asset('assets/js/detail.js')) ?>"></script>

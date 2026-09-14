@@ -35,6 +35,9 @@ dist/
 # 本地数据库配置
 config/local.php
 
+# 敏感词词库（本地维护，不纳入版本管理）
+app/blockword.txt
+
 # 素材资源（不纳入版本管理）
 public/assets/bg/
 public/assets/bgm/
