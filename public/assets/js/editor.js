@@ -7,6 +7,9 @@
 (function () {
     'use strict';
 
+    // 服务端注入的运行时上下文（baseUrl / csrfToken / user / upload）
+    var ctx = window.DRAMATOOL_CTX || {};
+
     // ============ 常量 ============
     var STORAGE_KEY = 'dramatool:editor:draft';
     var PREVIEW_KEY = 'dramatool:preview';
@@ -321,6 +324,13 @@
         if (!item || !item.src) return '';
         return /^(assets|uploads)\//.test(item.src) ? item.src : 'assets/' + item.src;
     }
+    // 素材缩略图地址：优先用服务端生成的缩略图，缺失时回退原图
+    function assetThumbUrl(item) {
+        if (!item) return '';
+        var t = item.thumb || item.src;
+        if (!t) return '';
+        return /^(assets|uploads)\//.test(t) ? t : 'assets/' + t;
+    }
     function findAsset(tab, id) {
         var list = assetListByTab(tab);
         for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
@@ -409,8 +419,15 @@
 
         var list = assetListByTab(state.activeAssetTab);
         if (!list.length) {
-            grid.appendChild(el('p', 'placeholder',
-                state.assetSource === 'mine' ? '还没有上传素材，点击右上角「+ 上传」' : '此分类暂无素材'));
+            var emptyText;
+            if (state.assetSource === 'mine') {
+                emptyText = cloudReady()
+                    ? '还没有上传素材，点击右上角「+ 上传」'
+                    : '登录后即可上传并使用自己的素材';
+            } else {
+                emptyText = '此分类暂无素材';
+            }
+            grid.appendChild(el('p', 'placeholder', emptyText));
             return;
         }
         list.forEach(function (item) {
@@ -482,9 +499,10 @@
             var card = el('div', 'char-item');
             var thumb = el('div', 'char-item__thumb');
             var img = document.createElement('img');
-            img.src = assetUrl(c.items[0]);
+            img.src = assetThumbUrl(c.items[0]);
             img.alt = c.character;
             img.loading = 'lazy';
+            img.decoding = 'async';
             img.draggable = false;
             thumb.appendChild(img);
             card.appendChild(thumb);
@@ -617,9 +635,11 @@
             });
         } else {
             var img = document.createElement('img');
-            img.src = assetUrl(item);
+            // 卡片只加载缩略图（原图留给悬停预览），并延迟到进入视口再请求
+            img.src = assetThumbUrl(item);
             img.alt = item.name;
             img.loading = 'lazy';
+            img.decoding = 'async';
             img.draggable = false;
             thumb.appendChild(img);
             // 悬停预览完整图片
@@ -1019,9 +1039,10 @@
         if (!a) return null;
         var box = el('div', 'node__thumb');
         var img = document.createElement('img');
-        img.src = assetUrl(a);
+        img.src = assetThumbUrl(a);
         img.alt = a.name || '';
         img.loading = 'lazy';
+        img.decoding = 'async';
         img.draggable = false;
         // 立绘已调整构图时，缩略图同步反映缩放/裁剪结果
         if (node.type === 'sprite') {
@@ -2153,7 +2174,6 @@
 
     // ============ 云端保存 / 加载（二期） ============
     // 依赖服务端注入的 window.DRAMATOOL_CTX = { baseUrl, csrfToken, user }
-    var ctx = window.DRAMATOOL_CTX || {};
     var cloudId = 0;          // 当前作品在云端的 id，0 表示尚未保存过
     var cloudSaving = false;
     var coverPath = '';       // 当前作品封面相对路径，空串表示未设置
@@ -2690,6 +2710,12 @@
         $('assetSourceTabs').addEventListener('click', function (e) {
             var t = e.target.closest('.tab');
             if (!t) return;
+            // 未登录时"我的素材"不可用，提示登录
+            if (t.dataset.source === 'mine' && !cloudReady()) {
+                toast('请先登录后再使用我的素材', 'err');
+                setTimeout(function () { location.href = apiUrl('login'); }, 800);
+                return;
+            }
             state.assetSource = t.dataset.source;
             state.spriteCharacter = null;
             syncAssetSourceTabs();
