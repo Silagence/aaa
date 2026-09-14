@@ -23,6 +23,7 @@ class User extends Model
         'bio',
         'role',
         'status',
+        'email_verified_at',
         'login_fail',
         'locked_until',
         'last_login_at',

@@ -11,6 +11,7 @@ namespace App\Controllers;
 use App\Core\Controller;
 use App\Core\Session;
 use App\Services\Auth;
+use App\Services\EmailVerification;
 use App\Services\PasswordReset;
 use App\Services\RegisterThrottle;
 
@@ -119,8 +120,62 @@ class AuthController extends Controller
         // 注册成功后直接登录，省去一次输入
         Auth::login($result['user']);
         Session::clearOldInput();
-        Session::flash('success', '注册成功，欢迎加入 Dramatool');
+
+        // 发送邮箱验证邮件（失败不阻断注册流程，用户可在个人中心重发）
+        $verify = EmailVerification::send($result['user']);
+        $message = '注册成功，欢迎加入 Dramatool';
+        if ($verify['ok']) {
+            $message .= '。验证邮件已发送，请查收并完成邮箱验证';
+            if (!empty($verify['debug_link'])) {
+                $message .= '（开发环境验证链接：' . $verify['debug_link'] . '）';
+            }
+        } else {
+            $message .= '。' . $verify['message'];
+        }
+
+        Session::flash('success', $message);
         $this->redirect('/');
+    }
+
+    /**
+     * 邮箱验证入口（凭邮件中的 token 打开）
+     */
+    public function verifyEmail(): void
+    {
+        $token = (string) $this->query('token', '');
+        $validated = EmailVerification::validate($token);
+
+        if ($validated === null) {
+            Session::flash('error', '验证链接无效或已过期，请登录后在个人中心重新发送');
+            $this->redirect(Auth::check() ? 'profile' : 'login');
+            return;
+        }
+
+        $result = EmailVerification::complete($validated);
+        Session::flash($result['ok'] ? 'success' : 'error', $result['message']);
+        $this->redirect(Auth::check() ? 'profile' : 'login');
+    }
+
+    /**
+     * 重新发送验证邮件（需登录）
+     */
+    public function resendVerification(): void
+    {
+        $user = Auth::user();
+        if ($user === null) {
+            $this->redirect('login');
+            return;
+        }
+        $this->verifyCsrf();
+
+        $result = EmailVerification::send($user);
+        $message = $result['message'];
+        if (!empty($result['debug_link'])) {
+            $message .= '（开发环境验证链接：' . $result['debug_link'] . '）';
+        }
+
+        Session::flash($result['ok'] ? 'success' : 'error', $message);
+        $this->redirect('profile');
     }
 
     /**

@@ -13,6 +13,7 @@ $avatarUrl = \App\Services\AvatarService::url($user['avatar'] ?? '');
 $avatarLicense = (string) ($user['avatar_license'] ?? 'original');
 $avatarLicenseLabel = \App\Services\AvatarService::licenseLabel($avatarLicense);
 $initial = mb_substr($user['nickname'] !== '' ? $user['nickname'] : $user['email'], 0, 1);
+$emailVerified = \App\Services\EmailVerification::isVerified($user);
 require __DIR__ . '/../partials/app_head.php';
 ?>
 
@@ -111,6 +112,26 @@ require __DIR__ . '/../partials/app_head.php';
                     <input class="field__input" type="email" value="<?= e($user['email']) ?>" disabled>
                     <span class="field__hint">邮箱作为登录账号，暂不支持修改</span>
                 </label>
+
+                <div class="field">
+                    <span class="field__label">邮箱验证</span>
+                    <?php if ($emailVerified): ?>
+                        <p class="verify-state verify-state--ok">
+                            已验证<span class="verify-state__time">
+                                （<?= e(mb_substr((string) $user['email_verified_at'], 0, 10)) ?>）
+                            </span>
+                        </p>
+                    <?php else: ?>
+                        <p class="verify-state verify-state--pending">未验证</p>
+                        <p class="field__hint">
+                            验证邮箱后可确保账号安全，并能在忘记密码时通过邮件找回。
+                        </p>
+                        <form method="post" action="<?= e(base_url('email/resend')) ?>">
+                            <?= \App\Core\Csrf::field() ?>
+                            <button class="btn btn--ghost btn--sm" type="submit">重新发送验证邮件</button>
+                        </form>
+                    <?php endif; ?>
+                </div>
 
                 <button class="btn btn--primary" type="submit">保存资料</button>
             </form>
