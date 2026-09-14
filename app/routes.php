@@ -47,6 +47,7 @@ $router->get('favorites', 'WorkController@favorites');
 
 // 作品 JSON 接口（供编辑器调用）
 $router->post('api/works/save', 'WorkController@save');
+$router->post('api/works/cover', 'WorkController@coverUpload');
 $router->get('api/works/{id}/public', 'WorkController@showPublic');
 $router->get('api/works/{id}', 'WorkController@show');
 $router->post('api/works/{id}/delete', 'WorkController@delete');

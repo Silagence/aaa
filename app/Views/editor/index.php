@@ -173,6 +173,20 @@
                         <input id="workTags" class="field__input" type="text"
                                placeholder="如：悬疑, 校园, 短篇">
                     </label>
+                    <div class="field">
+                        <span class="field__label">作品封面 <span class="field__hint">建议 16:9，2MB 以内</span></span>
+                        <div class="cover-picker">
+                            <div id="coverPreview" class="cover-picker__preview" hidden>
+                                <img id="coverImg" src="" alt="作品封面">
+                            </div>
+                            <div id="coverEmpty" class="cover-picker__empty">暂无封面</div>
+                            <div class="cover-picker__actions">
+                                <button id="btnCoverPick" class="btn btn--ghost btn--xs" type="button">选择图片</button>
+                                <button id="btnCoverRemove" class="btn btn--ghost btn--xs" type="button" hidden>移除</button>
+                            </div>
+                        </div>
+                        <input id="coverFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+                    </div>
                 </div>
             </section>
         </aside>

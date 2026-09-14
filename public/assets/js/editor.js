@@ -89,6 +89,9 @@
         state.selectedNodeIndex = -1;
         state.activeAssetTab = 'bg';
         state.assetSource = 'builtin';
+        cloudId = 0;
+        coverPath = '';
+        renderCover();
         ensureFirstScene();
         // tabs 高亮复位到"背景"
         Array.prototype.forEach.call($('assetTabs').children, function (c, i) {
@@ -2153,6 +2156,8 @@
     var ctx = window.DRAMATOOL_CTX || {};
     var cloudId = 0;          // 当前作品在云端的 id，0 表示尚未保存过
     var cloudSaving = false;
+    var coverPath = '';       // 当前作品封面相对路径，空串表示未设置
+    var coverUploading = false;
 
     function cloudReady() { return !!(ctx.user && ctx.csrfToken); }
 
@@ -2196,6 +2201,9 @@
         cloudPost('api/works/save', {
             id: cloudId,
             title: state.work.manifest.name || '未命名作品',
+            description: $('workDesc') ? $('workDesc').value : '',
+            tags: $('workTags') ? $('workTags').value : '',
+            cover: coverPath,
             data: JSON.stringify(buildExport()),
             _token: ctx.csrfToken
         }).then(function (res) {
@@ -2246,12 +2254,113 @@
             $('workName').value = res.work.title || '';
             if ($('workDesc')) $('workDesc').value = res.work.description || '';
             if ($('workTags')) $('workTags').value = res.work.tags || '';
+            coverPath = res.work.cover || '';
+            renderCover();
             $('saveState').className = 'topbar__save is-saved';
             $('saveState').textContent = '已从云端加载';
             toast('已加载《' + (res.work.title || '未命名作品') + '》');
         }).catch(function () {
             toast('网络异常，加载失败', 'err');
         });
+    }
+
+    // ============ 作品封面（二期） ============
+    // 封面单独上传，返回相对路径后随作品保存一并提交
+    function coverUrl(path) {
+        if (!path) return '';
+        return apiUrl('uploads/covers/' + path);
+    }
+
+    // 刷新封面预览区
+    function renderCover() {
+        var preview = $('coverPreview');
+        var empty = $('coverEmpty');
+        var img = $('coverImg');
+        var removeBtn = $('btnCoverRemove');
+        if (!preview || !empty) return;
+
+        if (coverPath) {
+            img.src = coverUrl(coverPath);
+            preview.hidden = false;
+            empty.hidden = true;
+            if (removeBtn) removeBtn.hidden = false;
+        } else {
+            img.removeAttribute('src');
+            preview.hidden = true;
+            empty.hidden = false;
+            if (removeBtn) removeBtn.hidden = true;
+        }
+    }
+
+    // 上传封面文件
+    function uploadCover(file) {
+        if (!cloudReady()) {
+            toast('请先登录后再上传封面', 'err');
+            setTimeout(function () { location.href = apiUrl('login'); }, 800);
+            return;
+        }
+        if (coverUploading) return;
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) {
+            toast('封面不能超过 2MB', 'err');
+            return;
+        }
+
+        var picker = document.querySelector('.cover-picker');
+        var btn = $('btnCoverPick');
+        coverUploading = true;
+        if (picker) picker.classList.add('is-uploading');
+        if (btn) { btn.disabled = true; btn.textContent = '上传中…'; }
+
+        var form = new FormData();
+        form.append('cover', file);
+        form.append('_token', ctx.csrfToken);
+
+        fetch(apiUrl('api/works/cover'), {
+            method: 'POST',
+            headers: {
+                'X-CSRF-Token': ctx.csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: form,
+            credentials: 'same-origin'
+        }).then(function (res) {
+            return res.json().catch(function () {
+                return { ok: false, message: '服务器返回异常（HTTP ' + res.status + '）' };
+            });
+        }).then(function (res) {
+            coverUploading = false;
+            if (picker) picker.classList.remove('is-uploading');
+            if (btn) { btn.disabled = false; btn.textContent = '选择图片'; }
+
+            if (!res.ok) {
+                if (res.need_login) {
+                    toast('登录已过期，请重新登录', 'err');
+                    setTimeout(function () { location.href = apiUrl('login'); }, 800);
+                    return;
+                }
+                toast(res.message || '封面上传失败', 'err');
+                return;
+            }
+            coverPath = res.cover || '';
+            renderCover();
+            markDirty();
+            toast('封面已上传，保存作品后生效', 'ok');
+        }).catch(function () {
+            coverUploading = false;
+            if (picker) picker.classList.remove('is-uploading');
+            if (btn) { btn.disabled = false; btn.textContent = '选择图片'; }
+            toast('网络异常，封面上传失败', 'err');
+        });
+    }
+
+    // 移除封面（仅清空本地引用，保存后生效）
+    function removeCover() {
+        coverPath = '';
+        renderCover();
+        markDirty();
+        toast('已移除封面，保存作品后生效');
     }
 
     // ============ 自动保存到云端（二期） ============
@@ -2273,6 +2382,9 @@
         cloudPost('api/works/save', {
             id: cloudId,
             title: state.work.manifest.name || '未命名作品',
+            description: $('workDesc') ? $('workDesc').value : '',
+            tags: $('workTags') ? $('workTags').value : '',
+            cover: coverPath,
             data: JSON.stringify(buildExport()),
             _token: ctx.csrfToken
         }).then(function (res) {
@@ -2409,6 +2521,7 @@
             title: state.work.manifest.name || '未命名作品',
             description: $('workDesc') ? $('workDesc').value : '',
             tags: $('workTags') ? $('workTags').value : '',
+            cover: coverPath,
             data: JSON.stringify(buildExport()),
             _token: ctx.csrfToken
         }).then(function (res) {
@@ -2510,6 +2623,12 @@
         });
         $('btnExport').addEventListener('click', openExport);
         $('btnCloudSave').addEventListener('click', cloudSave);
+        $('btnCoverPick').addEventListener('click', function () { $('coverFile').click(); });
+        $('coverFile').addEventListener('change', function () {
+            if (this.files && this.files[0]) uploadCover(this.files[0]);
+            this.value = '';
+        });
+        $('btnCoverRemove').addEventListener('click', removeCover);
         $('btnHistory').addEventListener('click', openHistory);
         $('closeHistory').addEventListener('click', closeHistory);
         $('btnCloseHistory').addEventListener('click', closeHistory);
@@ -2675,6 +2794,7 @@
         bindEvents();
         bindNodeDrop();
         startAutoSave();
+        renderCover();
         // 加载素材后渲染
         loadAssets(function () {
             renderAll();

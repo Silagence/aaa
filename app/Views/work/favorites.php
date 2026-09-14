@@ -39,7 +39,7 @@ require __DIR__ . '/../partials/app_head.php';
             <article class="work-card" data-id="<?= (int) $work['id'] ?>">
                 <a class="work-card__cover" href="<?= e(base_url('w/' . (string) $work['short_code'])) ?>">
                     <?php if ((string) $work['cover'] !== ''): ?>
-                        <img src="<?= e(asset((string) $work['cover'])) ?>" alt="<?= e($work['title']) ?>">
+                        <img src="<?= e(asset('uploads/covers/' . (string) $work['cover'])) ?>" alt="<?= e($work['title']) ?>">
                     <?php else: ?>
                         <span class="work-card__placeholder"><?= e(mb_substr((string) $work['title'], 0, 1)) ?></span>
                     <?php endif; ?>
