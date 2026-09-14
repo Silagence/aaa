@@ -29,6 +29,21 @@ class WorkController extends Controller
     /** 每份作品保留的历史快照条数 */
     private const MAX_REVISIONS = 30;
 
+    /** 封面单文件上限（字节），2MB */
+    private const COVER_MAX_SIZE = 2 * 1024 * 1024;
+
+    /** 封面允许的扩展名 */
+    private const COVER_ALLOWED_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
+    /** 封面允许的 MIME */
+    private const COVER_ALLOWED_MIME = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+    /** 封面统一缩放宽度 */
+    private const COVER_WIDTH = 640;
+
+    /** 封面统一缩放高度 */
+    private const COVER_HEIGHT = 360;
+
     /**
      * 我的作品列表页
      */
@@ -329,10 +344,93 @@ class WorkController extends Controller
     }
 
     /**
+     * 上传作品封面（需登录）
+     *
+     * POST /api/works/cover
+     * 入参：multipart 中的 cover 字段（图片文件）
+     * 出参：{ ok, cover, url }，cover 为相对路径，前端保存作品时回传
+     */
+    public function coverUpload(): void
+    {
+        $userId = $this->requireLogin();
+        if ($userId === null) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $file = $_FILES['cover'] ?? [];
+        if (!isset($file['error']) || (int) $file['error'] !== UPLOAD_ERR_OK) {
+            $this->json(['ok' => false, 'message' => $this->uploadErrorMessage((int) ($file['error'] ?? UPLOAD_ERR_NO_FILE))], 422);
+            return;
+        }
+
+        $tmpPath = (string) ($file['tmp_name'] ?? '');
+        if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
+            $this->json(['ok' => false, 'message' => '上传文件无效'], 422);
+            return;
+        }
+
+        $size = (int) ($file['size'] ?? 0);
+        if ($size <= 0) {
+            $this->json(['ok' => false, 'message' => '文件内容为空'], 422);
+            return;
+        }
+        if ($size > self::COVER_MAX_SIZE) {
+            $this->json(['ok' => false, 'message' => '封面不能超过 2MB'], 413);
+            return;
+        }
+
+        $ext = strtolower((string) pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+        if ($ext === '' || !in_array($ext, self::COVER_ALLOWED_EXT, true)) {
+            $this->json(['ok' => false, 'message' => '仅支持 PNG / JPG / GIF / WebP 格式'], 422);
+            return;
+        }
+
+        $mime = self::detectMime($tmpPath);
+        if ($mime === '' || !in_array($mime, self::COVER_ALLOWED_MIME, true)) {
+            $this->json(['ok' => false, 'message' => '文件内容与格式不符，已拒绝'], 422);
+            return;
+        }
+
+        $info = @getimagesize($tmpPath);
+        if ($info === false || empty($info[0]) || empty($info[1])) {
+            $this->json(['ok' => false, 'message' => '图片文件已损坏或格式不受支持'], 422);
+            return;
+        }
+
+        $resized = self::makeCover($tmpPath, (int) $info[0], (int) $info[1], $mime);
+        if ($resized === null) {
+            $this->json(['ok' => false, 'message' => '图片处理失败，请换一张图片重试'], 422);
+            return;
+        }
+
+        $dir = rtrim((string) config('paths.storage'), '/\\') . '/uploads/covers/' . $userId;
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
+            $this->json(['ok' => false, 'message' => '存储目录创建失败'], 500);
+            return;
+        }
+
+        $relative = $userId . '/' . substr(hash('sha256', (string) $size . $mime . microtime(true)), 0, 16) . '.jpg';
+        $target = $dir . '/' . basename($relative);
+
+        if (!imagejpeg($resized, $target, 85)) {
+            $this->json(['ok' => false, 'message' => '封面保存失败，请重试'], 500);
+            return;
+        }
+        @chmod($target, 0644);
+
+        $this->json([
+            'ok'    => true,
+            'cover' => $relative,
+            'url'   => base_url('uploads/covers/' . $relative),
+        ]);
+    }
+
+    /**
      * 保存作品（新建或更新）
      *
      * POST /api/works/save
-     * 参数：id（可选，为空则新建）、title、data（JSON 字符串）、description、is_public
+     * 参数：id（可选，为空则新建）、title、data（JSON 字符串）、description、is_public、cover（可选）
      */
     public function save(): void
     {
@@ -374,9 +472,11 @@ class WorkController extends Controller
         }
 
         $scenes = is_array($decoded['scenes']) ? $decoded['scenes'] : [];
+        $cover = $this->normalizeCover((string) $this->input('cover', ''));
         $payload = [
             'title'       => $title,
             'description' => $description,
+            'cover'       => $cover,
             'data'        => $rawData,
             'scene_count' => count($scenes),
             'word_count'  => $this->countWords($scenes),
@@ -401,6 +501,10 @@ class WorkController extends Controller
                 ]);
                 WorkRevision::prune($id, self::MAX_REVISIONS);
             }
+            // 更新时不传 cover 字段时保留原封面
+            if ($cover === '' && (string) $existing['cover'] !== '') {
+                unset($payload['cover']);
+            }
             Work::updateById($id, $payload);
         } else {
             $payload['user_id'] = $userId;
@@ -411,6 +515,7 @@ class WorkController extends Controller
             'ok'       => true,
             'message'  => '已保存到云端',
             'id'       => $id,
+            'cover'    => $cover,
             'saved_at' => date('Y-m-d H:i:s'),
         ]);
     }
@@ -439,6 +544,9 @@ class WorkController extends Controller
                 'id'          => (int) $work['id'],
                 'title'       => $work['title'],
                 'description' => $work['description'],
+                'cover'       => (string) $work['cover'],
+                'cover_url'   => $work['cover'] !== '' ? base_url('uploads/covers/' . $work['cover']) : '',
+                'tags'        => (string) $work['tags'],
                 'is_public'   => (int) $work['is_public'],
                 'updated_at'  => $work['updated_at'],
                 'data'        => json_decode((string) $work['data'], true),
@@ -823,5 +931,125 @@ class WorkController extends Controller
             }
         }
         return $count;
+    }
+
+    /**
+     * 校验并规范化封面相对路径
+     *
+     * 仅接受 {userId}/{16位十六进制}.jpg 形式，防止路径穿越与越权引用。
+     * 空串表示未设置封面。
+     */
+    private function normalizeCover(string $cover): string
+    {
+        $cover = trim($cover);
+        if ($cover === '') {
+            return '';
+        }
+        if (!preg_match('#^[0-9]+/[0-9a-f]{16}\.jpg$#', $cover)) {
+            return '';
+        }
+        return $cover;
+    }
+
+    /**
+     * 按封面比例缩放（保持宽高比，最大 640×360），并铺白底剥离透明通道
+     *
+     * @return \GdImage|null
+     */
+    private static function makeCover(string $path, int $width, int $height, string $mime)
+    {
+        if (!function_exists('imagecreatetruecolor')) {
+            return null;
+        }
+
+        $source = self::createImage($path, $mime);
+        if ($source === null) {
+            return null;
+        }
+
+        // 等比缩放到不超过 640×360 的框内
+        $scale = min(self::COVER_WIDTH / $width, self::COVER_HEIGHT / $height, 1.0);
+        $targetW = max(1, (int) round($width * $scale));
+        $targetH = max(1, (int) round($height * $scale));
+
+        $canvas = imagecreatetruecolor($targetW, $targetH);
+        $white = imagecolorallocate($canvas, 255, 255, 255);
+        imagefilledrectangle($canvas, 0, 0, $targetW, $targetH, $white);
+        imagecopyresampled($canvas, $source, 0, 0, 0, 0, $targetW, $targetH, $width, $height);
+
+        return $canvas;
+    }
+
+    /**
+     * 按 MIME 创建 GD 图像资源
+     *
+     * @return \GdImage|null
+     */
+    private static function createImage(string $path, string $mime)
+    {
+        switch ($mime) {
+            case 'image/png':
+                $img = function_exists('imagecreatefrompng') ? @imagecreatefrompng($path) : false;
+                break;
+            case 'image/jpeg':
+                $img = function_exists('imagecreatefromjpeg') ? @imagecreatefromjpeg($path) : false;
+                break;
+            case 'image/gif':
+                $img = function_exists('imagecreatefromgif') ? @imagecreatefromgif($path) : false;
+                break;
+            case 'image/webp':
+                $img = function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($path) : false;
+                break;
+            default:
+                $img = false;
+        }
+        return $img === false ? null : $img;
+    }
+
+    /**
+     * 检测文件真实 MIME
+     */
+    private static function detectMime(string $path): string
+    {
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $mime = finfo_file($finfo, $path);
+                if (is_string($mime) && $mime !== '') {
+                    return strtolower($mime);
+                }
+            }
+        }
+        if (function_exists('mime_content_type')) {
+            $mime = mime_content_type($path);
+            if (is_string($mime) && $mime !== '') {
+                return strtolower($mime);
+            }
+        }
+        return '';
+    }
+
+    /**
+     * 上传错误码转提示文案
+     */
+    private function uploadErrorMessage(int $code): string
+    {
+        switch ($code) {
+            case UPLOAD_ERR_INI_SIZE:
+            case UPLOAD_ERR_FORM_SIZE:
+                return '文件超过服务器允许的大小';
+            case UPLOAD_ERR_PARTIAL:
+                return '文件上传不完整，请重试';
+            case UPLOAD_ERR_NO_FILE:
+                return '未选择文件';
+            case UPLOAD_ERR_NO_TMP_DIR:
+                return '服务器缺少临时目录';
+            case UPLOAD_ERR_CANT_WRITE:
+                return '服务器写入失败';
+            case UPLOAD_ERR_EXTENSION:
+                return '上传被服务器扩展中断';
+            default:
+                return '上传失败，请重试';
+        }
     }
 }

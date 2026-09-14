@@ -45,7 +45,7 @@ require __DIR__ . '/../partials/app_head.php';
         <div class="detail__stage">
             <div class="detail__cover">
                 <?php if ((string) $work['cover'] !== ''): ?>
-                    <img src="<?= e(asset((string) $work['cover'])) ?>" alt="<?= e($work['title']) ?>">
+                    <img src="<?= e(asset('uploads/covers/' . (string) $work['cover'])) ?>" alt="<?= e($work['title']) ?>">
                 <?php else: ?>
                     <span class="work-card__placeholder"><?= e(mb_substr((string) $work['title'], 0, 1)) ?></span>
                 <?php endif; ?>
