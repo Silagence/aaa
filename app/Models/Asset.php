@@ -22,6 +22,7 @@ class Asset extends Model
         'type',
         'name',
         'path',
+        'thumb',
         'mime',
         'size',
         'width',

@@ -15,6 +15,7 @@ use App\Core\Session;
 use App\Models\Asset;
 use App\Models\Work;
 use App\Services\Auth;
+use App\Services\Thumbnail;
 
 class AssetController extends Controller
 {
@@ -202,11 +203,22 @@ class AssetController extends Controller
         }
         @chmod($target, 0644);
 
+        // 图片素材生成缩略图：素材库卡片优先加载缩略图，避免下载原图
+        $thumb = '';
+        if ($type === 'bg' || $type === 'sprite') {
+            $thumbRelative = preg_replace('/\.[a-z0-9]+$/i', '', $relative) . '_thumb.jpg';
+            $thumbTarget = rtrim((string) config('upload.dir'), '/\\') . '/' . $thumbRelative;
+            if (Thumbnail::generate($target, $thumbTarget, $width, $height, $mime)) {
+                $thumb = $thumbRelative;
+            }
+        }
+
         $id = Asset::create([
             'user_id'    => $userId,
             'type'       => $type,
             'name'       => $this->displayName($originalName),
             'path'       => $relative,
+            'thumb'      => $thumb,
             'mime'       => $mime,
             'size'       => $size,
             'width'      => $width,
@@ -264,9 +276,17 @@ class AssetController extends Controller
         Asset::softDelete($assetId, $userId);
 
         // 物理文件删除失败不影响业务结果（记录已软删，文件可后续清理）
-        $path = rtrim((string) config('upload.dir'), '/\\') . '/' . (string) $asset['path'];
+        $root = rtrim((string) config('upload.dir'), '/\\');
+        $path = $root . '/' . (string) $asset['path'];
         if (is_file($path)) {
             @unlink($path);
+        }
+        // 同步清理缩略图，避免残留孤儿文件
+        if ((string) ($asset['thumb'] ?? '') !== '') {
+            $thumbPath = $root . '/' . (string) $asset['thumb'];
+            if (is_file($thumbPath)) {
+                @unlink($thumbPath);
+            }
         }
 
         $this->json(['ok' => true, 'message' => '素材已删除']);
@@ -354,14 +374,17 @@ class AssetController extends Controller
      */
     private function present(array $row, int $userId): array
     {
-        $url = (string) config('upload.url_prefix', 'uploads') . '/' . (string) $row['path'];
+        $prefix = (string) config('upload.url_prefix', 'uploads') . '/';
+        $url = $prefix . (string) $row['path'];
+        // 缩略图缺失时回退为原图，保证前端始终有可用地址
+        $thumb = (string) ($row['thumb'] ?? '') !== '' ? $prefix . (string) $row['thumb'] : $url;
         return [
             'id'         => Asset::refId($userId, (int) $row['id']),
             'assetId'    => (int) $row['id'],
             'type'       => (string) $row['type'],
             'name'       => (string) $row['name'],
             'src'        => $url,
-            'thumb'      => $url,
+            'thumb'      => $thumb,
             'width'      => (int) $row['width'],
             'height'     => (int) $row['height'],
             'duration'   => (float) $row['duration'],
