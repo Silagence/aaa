@@ -117,6 +117,11 @@
                     <input id="cfgBgm" type="range" min="0" max="1" step="0.05">
                     <span id="cfgBgmVal" class="setting-val"></span>
                 </label>
+                <label class="setting-row">
+                    <span>语音音量</span>
+                    <input id="cfgVoice" type="range" min="0" max="1" step="0.05">
+                    <span id="cfgVoiceVal" class="setting-val"></span>
+                </label>
                 <div class="setting-row">
                     <span>主题</span>
                     <select id="cfgTheme" class="field__select">

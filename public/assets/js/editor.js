@@ -26,13 +26,15 @@
     // 节点默认值
     function defaultNode(type) {
         switch (type) {
-            case 'bg':     return { type: 'bg',     ref: '', transition: 'fade' };
+            // effects 为节点级转场特效（需求 4.2.3）：fade 淡入 / flash 闪白 / shake 震动 / none 无
+            case 'bg':     return { type: 'bg',     ref: '', transition: 'fade', effects: '' };
             // character 为节点级字段：同一素材可被多个角色复用，各自独立高亮/变暗
-            case 'sprite': return { type: 'sprite', ref: '', character: '', position: 'center', animation: 'fadeIn' };
-            case 'spriteRemove': return { type: 'spriteRemove', character: '', ref: '' };
+            case 'sprite': return { type: 'sprite', ref: '', character: '', position: 'center', animation: 'fadeIn', effects: '' };
+            case 'spriteRemove': return { type: 'spriteRemove', character: '', ref: '', effects: '' };
             case 'bgm':    return { type: 'bgm',    ref: '', loop: true };
             case 'sfx':    return { type: 'sfx',    ref: '' };
-            case 'say':    return { type: 'say',    speaker: '', text: '', voice: '', speed: 30, speakers: '' };
+            // color 为说话文本颜色（需求 6.3 可选字段）
+            case 'say':    return { type: 'say',    speaker: '', text: '', voice: '', speed: 30, speakers: '', color: '' };
             case 'choose': return { type: 'choose', options: [{ text: '选项1', next: '' }] };
             case 'var':    return { type: 'var',    set: { affection: '0' }, if: null };
             case 'goto':   return { type: 'goto',   next: '' };
@@ -44,6 +46,10 @@
         bg: '背景', sprite: '立绘', spriteRemove: '移除立绘', bgm: 'BGM', sfx: '音效',
         say: '对话', choose: '选项', var: '变量', goto: '跳转'
     };
+
+    // 转场特效枚举（需求 4.2.3）：空字符串表示不启用
+    var EFFECTS = ['', 'fade', 'flash', 'shake', 'none'];
+    var EFFECT_LABELS = { '': '无', fade: '淡入', flash: '闪白', shake: '震动', none: '无' };
 
     // ============ 状态 ============
     var state = {
@@ -1010,16 +1016,22 @@
         return '';
     }
     function nodeSub(node) {
+        // 转场特效对所有支持它的节点类型统一展示
+        var fx = node.effects ? ' · 特效: ' + node.effects : '';
         switch (node.type) {
             case 'sprite':
                 return 'pos: ' + (node.position || 'center') +
                     (node.character ? ' · 角色: ' + node.character : '') +
-                    (node.animation ? ' · ' + node.animation : '');
+                    (node.animation ? ' · ' + node.animation : '') + fx;
             case 'spriteRemove':
-                return node.ref ? '素材: ' + node.ref : '按角色移除';
-            case 'bg':     return node.transition ? 'transition: ' + node.transition : '';
+                return (node.ref ? '素材: ' + node.ref : '按角色移除') + fx;
+            case 'bg':     return (node.transition ? 'transition: ' + node.transition : '') + fx;
             case 'bgm':    return node.loop ? 'loop' : 'no-loop';
-            case 'say':    return node.voice ? 'voice: ' + node.voice : '';
+            case 'say':
+                var sayParts = [];
+                if (node.voice) sayParts.push('voice: ' + node.voice);
+                if (node.color) sayParts.push('color: ' + node.color);
+                return sayParts.join(' · ');
             case 'choose': return node.options.map(function (o) { return o.text || '?'; }).join(' / ');
             case 'var':
                 var parts = Object.keys(node.set || {}).map(function (k) {
@@ -1312,6 +1324,18 @@
         return s;
     }
 
+    // 转场特效下拉（需求 4.2.3）：作用于 bg / sprite / spriteRemove 节点
+    function effectsSelect(value) {
+        var s = el('select', 'field__input');
+        EFFECTS.forEach(function (k) {
+            var o = el('option', '', EFFECT_LABELS[k] || k);
+            o.value = k;
+            if (k === (value || '')) o.selected = true;
+            s.appendChild(o);
+        });
+        return s;
+    }
+
     function bgFields(w, n) {
         var sel = assetSelect('bg', n.ref);
         sel.addEventListener('change', function () { n.ref = sel.value; commit(); });
@@ -1319,6 +1343,9 @@
         var tr = textInput(n.transition || '', '过渡效果 fade/none');
         tr.addEventListener('input', function () { n.transition = tr.value; commit('bg.transition'); });
         w.appendChild(fieldRow('过渡', '')).appendChild(tr);
+        var fx = effectsSelect(n.effects);
+        fx.addEventListener('change', function () { n.effects = fx.value; commit(); });
+        w.appendChild(fieldRow('转场特效', '')).appendChild(fx);
     }
     function spriteFields(w, n) {
         var sel = assetSelect('sprite', n.ref);
@@ -1360,6 +1387,9 @@
         var ani = selectInput(['fadeIn', 'moveIn', 'zoomIn', 'none'], n.animation || 'fadeIn');
         ani.addEventListener('change', function () { n.animation = ani.value; refreshActiveNodeCard(); markDirty(); pushHistory('sprite.animation'); });
         w.appendChild(fieldRow('动画', '')).appendChild(ani);
+        var fx = effectsSelect(n.effects);
+        fx.addEventListener('change', function () { n.effects = fx.value; commit(); });
+        w.appendChild(fieldRow('转场特效', '')).appendChild(fx);
     }
     // 移除立绘：按角色撤下画面上对应的立绘（同素材多角色时用于单独撤下）
     function spriteRemoveFields(w, n) {
@@ -1373,6 +1403,9 @@
         var sel = assetSelect('sprite', n.ref);
         sel.addEventListener('change', function () { n.ref = sel.value; commit(); });
         w.appendChild(fieldRow('限定素材', '')).appendChild(sel);
+        var fx = effectsSelect(n.effects);
+        fx.addEventListener('change', function () { n.effects = fx.value; commit(); });
+        w.appendChild(fieldRow('转场特效', '')).appendChild(fx);
         w.appendChild(el('p', 'field__hint',
             '角色与素材都留空时不做任何操作。只填角色则移除该角色的立绘；只填素材则移除该素材的所有立绘。'));
     }
@@ -1409,6 +1442,10 @@
         var vc = textInput(n.voice || '', '语音文件（可选）');
         vc.addEventListener('input', function () { n.voice = vc.value; markDirty(); pushHistory('say.voice'); });
         w.appendChild(fieldRow('语音', '')).appendChild(vc);
+        // 文本颜色（需求 6.3 可选字段）：留空则用主题默认色
+        var cl = textInput(n.color || '', '如 #ff6b6b 或 red；留空用默认色');
+        cl.addEventListener('input', function () { n.color = cl.value; markDirty(); pushHistory('say.color'); });
+        w.appendChild(fieldRow('文本颜色', '')).appendChild(cl);
         var sp2 = numberInput(n.speed != null ? n.speed : 30, 1, 200, '打字速度（字符/秒）');
         sp2.addEventListener('input', function () { n.speed = parseInt(sp2.value, 10) || 30; markDirty(); pushHistory('say.speed'); });
         w.appendChild(fieldRow('打字速度', '')).appendChild(sp2);
@@ -1651,12 +1688,12 @@
     // 语法：
     //   #meta key=value        作品信息（name/author/version/engine/startScene/canvas）
     //   #scene <id>            场景开始
-    //   bg:<ref>[:<transition>];
-    //   sprite:<ref>[:<character>[:<position>[:<animation>]]];
-    //   spriteRemove:<character>:<ref>;   按角色/素材移除立绘
+    //   bg:<ref>[:<transition>[:<effects>]];
+    //   sprite:<ref>[:<character>[:<position>[:<animation>[:<effects>]]]];
+    //   spriteRemove:<character>:<ref>[:<effects>];   按角色/素材移除立绘
     //   bgm:<ref>[:loop|noloop];
     //   sfx:<ref>;
-    //   say:<speaker>:<text>[:<voice>[:<speed>[:<speakers>]]];
+    //   say:<speaker>:<text>[:<voice>[:<speed>[:<speakers>[:<color>]]]];
     //   choose:<text>:<next> | <text>:<next>;
     //   var:<key>=<value>[,<key>=<value>];
     //   goto:<sceneId>;
@@ -1727,24 +1764,28 @@
         switch (n.type) {
             case 'bg':
                 return 'bg:' + txtEsc(n.ref || '') +
-                    (n.transition ? ':' + txtEsc(n.transition) : '') + ';';
+                    (n.transition ? ':' + txtEsc(n.transition) : '') +
+                    (n.effects ? ':' + txtEsc(n.effects) : '') + ';';
             case 'sprite':
-                // sprite:<素材>:<角色>:<位置>:<动画>;
+                // sprite:<素材>:<角色>:<位置>:<动画>:<特效>;
                 return 'sprite:' + txtEsc(n.ref || '') + ':' + txtEsc(n.character || '') + ':' +
                     txtEsc(n.position || 'center') +
-                    (n.animation ? ':' + txtEsc(n.animation) : '') + ';';
+                    (n.animation ? ':' + txtEsc(n.animation) : '') +
+                    (n.effects ? ':' + txtEsc(n.effects) : '') + ';';
             case 'spriteRemove':
-                // spriteRemove:<角色>:<素材>;
-                return 'spriteRemove:' + txtEsc(n.character || '') + ':' + txtEsc(n.ref || '') + ';';
+                // spriteRemove:<角色>:<素材>:<特效>;
+                return 'spriteRemove:' + txtEsc(n.character || '') + ':' + txtEsc(n.ref || '') +
+                    (n.effects ? ':' + txtEsc(n.effects) : '') + ';';
             case 'bgm':
                 return 'bgm:' + txtEsc(n.ref || '') + ':' + (n.loop === false ? 'noloop' : 'loop') + ';';
             case 'sfx':
                 return 'sfx:' + txtEsc(n.ref || '') + ';';
             case 'say':
-                // say:<speaker>:<text>:<voice>:<speed>:<speakers>;
+                // say:<speaker>:<text>:<voice>:<speed>:<speakers>:<color>;
                 return 'say:' + txtEsc(n.speaker || '') + ':' + txtEsc(n.text || '') + ':' +
                     txtEsc(n.voice || '') + ':' + (n.speed != null ? n.speed : 30) + ':' +
-                    txtEsc(n.speakers || '') + ';';
+                    txtEsc(n.speakers || '') +
+                    (n.color ? ':' + txtEsc(n.color) : '') + ';';
             case 'choose':
                 return 'choose:' + (n.options || []).map(function (o) {
                     return txtEsc(o.text || '') + ':' + txtEsc(o.next || '');
@@ -1828,14 +1869,14 @@
         var f = txtSplit(rest, ':');
         switch (type) {
             case 'bg':
-                return { type: 'bg', ref: f[0] || '', transition: f[1] || 'fade' };
+                return { type: 'bg', ref: f[0] || '', transition: f[1] || 'fade', effects: f[2] || '' };
             case 'sprite':
                 return {
                     type: 'sprite', ref: f[0] || '', character: f[1] || '',
-                    position: f[2] || 'center', animation: f[3] || ''
+                    position: f[2] || 'center', animation: f[3] || '', effects: f[4] || ''
                 };
             case 'spriteRemove':
-                return { type: 'spriteRemove', character: f[0] || '', ref: f[1] || '' };
+                return { type: 'spriteRemove', character: f[0] || '', ref: f[1] || '', effects: f[2] || '' };
             case 'bgm':
                 return { type: 'bgm', ref: f[0] || '', loop: (f[1] || 'loop') !== 'noloop' };
             case 'sfx':
@@ -1843,7 +1884,7 @@
             case 'say':
                 var node = {
                     type: 'say', speaker: f[0] || '', text: f[1] || '',
-                    voice: f[2] || '', speed: 30, speakers: f[4] || ''
+                    voice: f[2] || '', speed: 30, speakers: f[4] || '', color: f[5] || ''
                 };
                 if (f[3] != null && f[3] !== '') {
                     var sp = parseInt(f[3], 10);
@@ -1889,6 +1930,17 @@
     // 校验必填字段、素材引用是否存在、next/choices 跳转目标是否存在。
     // 返回 { errors: [], warnings: [] }，errors 非空时导入应被拒绝。
     // 素材引用以「导入文件自带的 assets 段」为准，缺失时回退到平台内置素材库。
+
+    // 颜色合法性：仅允许 #rgb / #rrggbb / #rrggbbaa 或 CSS 颜色关键字。
+    // 播放器会把该值写入内联样式，严格白名单可避免样式注入。
+    var COLOR_KEYWORDS = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple',
+        'pink', 'brown', 'black', 'white', 'gray', 'grey', 'gold', 'silver'];
+    function isValidColor(v) {
+        var s = String(v).trim();
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)) return true;
+        return COLOR_KEYWORDS.indexOf(s.toLowerCase()) >= 0;
+    }
+
     function validateWork(data) {
         var errors = [];
         var warnings = [];
@@ -1931,6 +1983,11 @@
             var where = '场景 "' + sc.id + '"';
             (sc.nodes || []).forEach(function (n, i) {
                 var at = where + ' 第 ' + (i + 1) + ' 个节点（' + (NODE_LABELS[n.type] || n.type) + '）';
+                // 转场特效取值校验（bg / sprite / spriteRemove 支持）
+                if (n.effects && EFFECTS.indexOf(n.effects) < 0) {
+                    errors.push(at + '：不支持的转场特效 "' + n.effects + '"（可选 ' +
+                        EFFECTS.filter(function (k) { return k; }).join(' / ') + '）');
+                }
                 switch (n.type) {
                     case 'bg':
                         if (!n.ref) errors.push(at + '：缺少背景素材（ref）');
@@ -1954,6 +2011,10 @@
                     case 'say':
                         if (!n.text) errors.push(at + '：缺少对话文本（text）');
                         if (!n.speaker) warnings.push(at + '：未填写说话人（speaker）');
+                        // 文本颜色仅接受十六进制或常见 CSS 颜色关键字，避免注入非法样式
+                        if (n.color && !isValidColor(n.color)) {
+                            errors.push(at + '：文本颜色 "' + n.color + '" 格式不正确（如 #ff6b6b 或 red）');
+                        }
                         break;
                     case 'choose':
                         if (!Array.isArray(n.options) || !n.options.length) {

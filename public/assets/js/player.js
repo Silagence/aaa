@@ -34,9 +34,10 @@
     var bgmEl = null;
     var bgmFadeTimer = null;    // BGM 淡入淡出定时器
     var bgmCurSrc = '';         // 当前 BGM 素材地址，用于判断是否需要换曲
+    var voiceEl = null;         // 当前语音（同一时刻只播一条）
     var BGM_FADE_MS = 600;      // 淡入淡出时长（毫秒）
     var BGM_FADE_STEP = 40;     // 淡入淡出刷新间隔（毫秒）
-    var cfg = { speed: 30, auto: 1000, bgm: 0.6 };
+    var cfg = { speed: 30, auto: 1000, bgm: 0.6, voice: 1 };
     var readSet = {};           // 已读节点集合：key 为 "sceneId#nodeIndex"
 
     // ============ 工具 ============
@@ -70,6 +71,14 @@
     function assetSrc(asset) {
         // 内置素材 src 形如 bg/x.png；用户素材 src 形如 uploads/12/bg/202609/xxx.png
         return /^(assets|uploads)\//.test(asset.src) ? asset.src : 'assets/' + asset.src;
+    }
+    // 文本颜色白名单（需求 6.3）：仅接受 #rgb/#rrggbb/#rrggbbaa 与常见颜色关键字，防样式注入
+    var COLOR_KEYWORDS = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple',
+        'pink', 'brown', 'black', 'white', 'gray', 'grey', 'gold', 'silver'];
+    function isValidColor(v) {
+        var s = String(v || '').trim();
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)) return true;
+        return COLOR_KEYWORDS.indexOf(s.toLowerCase()) >= 0;
     }
     // 立绘构图参数（编辑器保存，按素材 id 索引）
     function spriteTransform(assetId) {
@@ -238,6 +247,8 @@
         hideChoices();
         // 记录已读：节点一旦执行即视为已读（供下次快进跳过）
         markRead(curSceneId, nodeIndex);
+        // 转场特效先于节点内容生效，让画面变化与特效同步
+        applyEffects(node);
         switch (node.type) {
             case 'bg':     applyBg(node); nextNode(); break;
             case 'sprite': applySprite(node); nextNode(); break;
@@ -440,6 +451,44 @@
         sfx.play().catch(function () {});
     }
 
+    // ============ 语音（需求 4.3.3） ============
+    // 语音与 BGM/SFX 走独立通道，同一时刻只保留一条，避免连续对话时叠音。
+    function stopVoice() {
+        if (!voiceEl) return;
+        try { voiceEl.pause(); } catch (e) {}
+        voiceEl = null;
+    }
+    // 语音地址：优先按素材 id 在作品素材表里解析，找不到时按原样当作路径使用
+    function voiceSrc(ref) {
+        var a = resolveAsset('voice', ref);
+        return a ? assetSrc(a) : ref;
+    }
+    function playVoice(node) {
+        stopVoice();
+        if (!node.voice) return;
+        var v = new Audio(voiceSrc(node.voice));
+        v.volume = cfg.voice;
+        voiceEl = v;
+        v.play().catch(function () {});
+    }
+
+    // ============ 转场特效（需求 4.2.3） ============
+    // fade 淡入 / flash 闪白 / shake 震动 / none 无；空值等同 none。
+    var EFFECT_CLASSES = ['fx-fade', 'fx-flash', 'fx-shake'];
+    function applyEffects(node) {
+        var fx = node.effects;
+        if (!fx || fx === 'none') return;
+        var stage = $('stage');
+        if (!stage) return;
+        var cls = 'fx-' + fx;
+        if (EFFECT_CLASSES.indexOf(cls) < 0) return;
+        stage.classList.remove.apply(stage.classList, EFFECT_CLASSES);
+        // 强制回流，保证同一特效连续触发时动画能重新播放
+        void stage.offsetWidth;
+        stage.classList.add(cls);
+        setTimeout(function () { stage.classList.remove(cls); }, 700);
+    }
+
     // 对话：打字机
     // 解析 say 节点的 speakers 字段（空格分隔的 character 值）
     // 命中的立绘保持高亮，其他立绘变暗；speakers 为空则所有立绘恢复正常
@@ -466,10 +515,15 @@
         dialog.hidden = false;
         $('dialogSpeaker').textContent = node.speaker || '';
         updateSpeakerHighlight(node.speakers);
+        // 文本颜色（需求 6.3）：仅接受合法颜色值，非法值回退主题默认色
+        var textEl = $('dialogText');
+        textEl.style.color = isValidColor(node.color) ? node.color : '';
+        // 语音与打字机同时开始，跳过打字机时语音继续播放
+        playVoice(node);
         typingText = node.text || '';
         typingPos = 0;
         isTyping = true;
-        $('dialogText').innerHTML = '<span class="caret"></span>';
+        textEl.innerHTML = '<span class="caret"></span>';
         $('clickHint').hidden = true;
 
         // 历史
@@ -613,6 +667,7 @@
         hideChoices();
         $('ending').hidden = false;
         stopBgm();
+        stopVoice();
     }
 
     // ============ 控制键 / 按钮 ============
@@ -895,6 +950,7 @@
         variables = Object.assign({}, snap.variables || {});
         $('ending').hidden = true;
         stopBgm(true);
+        stopVoice();
         // 清空立绘
         $('spriteLayer').innerHTML = '';
         nextNode();
@@ -913,6 +969,8 @@
         $('cfgAutoVal').textContent = cfg.auto;
         $('cfgBgm').value = cfg.bgm;
         $('cfgBgmVal').textContent = Math.round(cfg.bgm * 100) + '%';
+        $('cfgVoice').value = cfg.voice;
+        $('cfgVoiceVal').textContent = Math.round(cfg.voice * 100) + '%';
         if (window.DramatoolTheme) $('cfgTheme').value = window.DramatoolTheme.get();
         $('settingsModal').hidden = false;
     }
@@ -927,6 +985,11 @@
             cfg.bgm = parseFloat(this.value); $('cfgBgmVal').textContent = Math.round(cfg.bgm * 100) + '%';
             // 手动调节音量时取消进行中的淡入淡出，避免被定时器覆盖
             if (bgmEl) { stopBgmFade(); bgmEl.volume = cfg.bgm; }
+            saveCfg();
+        });
+        $('cfgVoice').addEventListener('input', function () {
+            cfg.voice = parseFloat(this.value); $('cfgVoiceVal').textContent = Math.round(cfg.voice * 100) + '%';
+            if (voiceEl) voiceEl.volume = cfg.voice;
             saveCfg();
         });
         $('cfgTheme').addEventListener('change', function () {
@@ -961,6 +1024,7 @@
             $('ending').hidden = true;
             $('spriteLayer').innerHTML = '';
             stopBgm(true);
+            stopVoice();
             enterScene(work.manifest.startScene || work.scenes[0].id);
         });
 

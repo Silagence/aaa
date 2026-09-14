@@ -41,6 +41,29 @@
     transition: opacity 0.3s ease;
 }
 
+/* ===== 转场特效（需求 4.2.3）：由 player.js 的 applyEffects 添加类名 ===== */
+.stage.fx-fade { animation: fx-fade 0.6s ease; }
+.stage.fx-flash { animation: fx-flash 0.6s ease; }
+.stage.fx-shake { animation: fx-shake 0.6s ease; }
+
+@keyframes fx-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes fx-flash {
+    0%   { filter: brightness(1); }
+    30%  { filter: brightness(2.4); }
+    100% { filter: brightness(1); }
+}
+@keyframes fx-shake {
+    0%, 100% { transform: translateX(0); }
+    15%      { transform: translateX(-12px); }
+    30%      { transform: translateX(10px); }
+    45%      { transform: translateX(-8px); }
+    60%      { transform: translateX(6px); }
+    80%      { transform: translateX(-3px); }
+}
+
 /* ===== 立绘层 ===== */
 .sprite-layer {
     display: flex;
