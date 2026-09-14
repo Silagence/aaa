@@ -1,16 +1,16 @@
 /**
  * 播放器引擎
- * 数据来源：localStorage['asha:preview']（preview 模式）
+ * 数据来源：localStorage['dramatool:preview']（preview 模式）
  * 流程：读取配置 → 按 manifest.startScene 进入首个场景 → 逐节点执行 → 遇 goto/choose 跳转 → 终点显示"剧终"
  * 支持：背景/立绘/BGM/音效/对话/选项/变量/跳转、打字机、历史、存档、控制键
  */
 (function () {
     'use strict';
 
-    var PREVIEW_KEY = 'asha:preview';
-    var SAVE_KEY = 'asha:player:saves';
-    var CFG_KEY = 'asha:player:cfg';
-    var READ_KEY = 'asha:player:read';   // 已读节点记录（按作品名隔离）
+    var PREVIEW_KEY = 'dramatool:preview';
+    var SAVE_KEY = 'dramatool:player:saves';
+    var CFG_KEY = 'dramatool:player:cfg';
+    var READ_KEY = 'dramatool:player:read';   // 已读节点记录（按作品名隔离）
     var THUMB_W = 192;                   // 存档缩略图宽度（16:9 → 108 高）
 
     // ============ 状态 ============
@@ -68,7 +68,8 @@
         return assetMap[key] || null;
     }
     function assetSrc(asset) {
-        return 'assets/' + asset.src;
+        // 内置素材 src 形如 bg/x.png；用户素材 src 形如 uploads/12/bg/202609/xxx.png
+        return /^(assets|uploads)\//.test(asset.src) ? asset.src : 'assets/' + asset.src;
     }
     // 立绘构图参数（编辑器保存，按素材 id 索引）
     function spriteTransform(assetId) {
@@ -99,6 +100,76 @@
             if (!raw) { showErr('未找到预览配置。\n请先在编辑器中点击"预览"。'); return false; }
             work = JSON.parse(raw);
         } catch (e) { showErr('配置解析失败：' + e.message); return false; }
+        return applyWork();
+    }
+
+    // 从云端加载作品（?work=id）
+    // 已登录优先走私有接口（可播放本人未发布作品），失败或未登录时回退公开接口
+    function loadCloudWork(id, done) {
+        var ctx = window.DRAMATOOL_CTX || {};
+        var base = (ctx.baseUrl || '/').replace(/\/+$/, '');
+        var url = base + (ctx.user ? '/api/works/' : '/api/works/') + encodeURIComponent(id)
+            + (ctx.user ? '' : '/public');
+
+        fetch(url, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        }).then(function (res) {
+            return res.json().catch(function () { return { ok: false, message: '作品数据解析失败' }; });
+        }).then(function (res) {
+            if (res.ok && res.work && res.work.data) {
+                work = res.work.data;
+                reportPlay(id);
+                done(applyWork());
+                return;
+            }
+            // 私有接口不可用时（未登录 / 非本人作品）回退公开接口
+            if (ctx.user) {
+                fetch(base + '/api/works/' + encodeURIComponent(id) + '/public', {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                }).then(function (r2) {
+                    return r2.json().catch(function () { return { ok: false }; });
+                }).then(function (r2) {
+                    if (r2.ok && r2.work && r2.work.data) {
+                        work = r2.work.data;
+                        reportPlay(id);
+                        done(applyWork());
+                        return;
+                    }
+                    showErr(r2.message || res.message || '作品加载失败。');
+                    done(false);
+                }).catch(function () {
+                    showErr('网络异常，作品加载失败。');
+                    done(false);
+                });
+                return;
+            }
+            showErr(res.message || '作品加载失败。');
+            done(false);
+        }).catch(function () {
+            showErr('网络异常，作品加载失败。');
+            done(false);
+        });
+    }
+
+    // 上报一次播放（服务端按会话去重，失败静默忽略，不影响播放）
+    function reportPlay(id) {
+        var ctx = window.DRAMATOOL_CTX || {};
+        var base = (ctx.baseUrl || '/').replace(/\/+$/, '');
+        fetch(base + '/api/works/' + encodeURIComponent(id) + '/play', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': ctx.csrfToken || ''
+            },
+            credentials: 'same-origin'
+        }).catch(function () {});
+    }
+
+    // 校验并索引作品数据，成功返回 true
+    function applyWork() {
         if (!work.manifest || !Array.isArray(work.scenes)) {
             showErr('配置格式不合法：缺少 manifest 或 scenes。'); return false;
         }
@@ -546,11 +617,13 @@
 
     // ============ 控制键 / 按钮 ============
     function isModalOpen() {
-        return !$('historyModal').hidden || !$('saveModal').hidden || !$('settingsModal').hidden;
+        return !$('historyModal').hidden
+            || ($('saveModal') && !$('saveModal').hidden)
+            || !$('settingsModal').hidden;
     }
     function closeAllModals() {
         $('historyModal').hidden = true;
-        $('saveModal').hidden = true;
+        if ($('saveModal')) $('saveModal').hidden = true;
         $('settingsModal').hidden = true;
     }
 
@@ -569,8 +642,8 @@
                 e.preventDefault(); skipToChoice(); break;
             case 'a': case 'A': toggleAuto(); break;
             case 'l': case 'L': openHistory(); break;
-            case 's': case 'S': openSave(); break;
-            case 'o': case 'O': openLoad(); break;
+            case 's': case 'S': if ($('btnSave')) openSave(); break;
+            case 'o': case 'O': if ($('btnLoad')) openLoad(); break;
             case 'Escape': openSettings(); break;
         }
         if (e.ctrlKey && !isSkipping) { startSkipping(); }
@@ -840,6 +913,7 @@
         $('cfgAutoVal').textContent = cfg.auto;
         $('cfgBgm').value = cfg.bgm;
         $('cfgBgmVal').textContent = Math.round(cfg.bgm * 100) + '%';
+        if (window.DramatoolTheme) $('cfgTheme').value = window.DramatoolTheme.get();
         $('settingsModal').hidden = false;
     }
     function bindSettings() {
@@ -854,6 +928,9 @@
             // 手动调节音量时取消进行中的淡入淡出，避免被定时器覆盖
             if (bgmEl) { stopBgmFade(); bgmEl.volume = cfg.bgm; }
             saveCfg();
+        });
+        $('cfgTheme').addEventListener('change', function () {
+            if (window.DramatoolTheme) window.DramatoolTheme.set(this.value);
         });
     }
 
@@ -874,8 +951,9 @@
         $('btnSkip').addEventListener('mouseup', stopSkipping);
         $('btnSkip').addEventListener('mouseleave', stopSkipping);
         $('btnHistory').addEventListener('click', openHistory);
-        $('btnSave').addEventListener('click', openSave);
-        $('btnLoad').addEventListener('click', openLoad);
+        // 存档 / 读档仅在完整播放器中提供，嵌入页无对应按钮
+        if ($('btnSave')) $('btnSave').addEventListener('click', openSave);
+        if ($('btnLoad')) $('btnLoad').addEventListener('click', openLoad);
         $('btnSettings').addEventListener('click', openSettings);
         $('btnRestart').addEventListener('click', function () {
             if (isSkipping) stopSkipping();
@@ -888,12 +966,12 @@
 
         // 模态框关闭
         $('closeHistory').addEventListener('click', function () { $('historyModal').hidden = true; });
-        $('closeSave').addEventListener('click', function () { $('saveModal').hidden = true; });
+        if ($('closeSave')) $('closeSave').addEventListener('click', function () { $('saveModal').hidden = true; });
         $('closeSettings').addEventListener('click', function () { $('settingsModal').hidden = true; });
-        $('btnClearSave').addEventListener('click', function () {
+        if ($('btnClearSave')) $('btnClearSave').addEventListener('click', function () {
             if (confirm('确定清空全部存档？')) { setSaves([]); renderSaveList('save'); toast('已清空'); }
         });
-        $('btnClearRead').addEventListener('click', function () {
+        if ($('btnClearRead')) $('btnClearRead').addEventListener('click', function () {
             clearRead(); toast('已清空已读记录', 'ok');
         });
         bindSettings();
@@ -915,11 +993,31 @@
     function init() {
         guardAssets();
         loadCfg();
-        bindSettings();
+        // 先绑定界面事件，保证无作品数据时设置/历史/存档等按钮仍可用
+        bind();
         loadManifest(function () {
+            var ctx = window.DRAMATOOL_CTX || {};
+            // 嵌入模式：作品 id 由服务端注入，直接加载公开作品
+            if (ctx.embed && ctx.workId) {
+                loadCloudWork(ctx.workId, function (ok) {
+                    if (!ok) return;
+                    loadRead();
+                    enterScene(curSceneId);
+                });
+                return;
+            }
+            // ?work=id 时播放云端作品，否则播放编辑器预览数据
+            var m = /[?&]work=(\d+)/.exec(location.search);
+            if (m) {
+                loadCloudWork(m[1], function (ok) {
+                    if (!ok) return;
+                    loadRead();
+                    enterScene(curSceneId);
+                });
+                return;
+            }
             if (!loadWork()) return;
             loadRead();
-            bind();
             enterScene(curSceneId);
         });
     }

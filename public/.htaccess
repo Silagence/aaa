@@ -1,0 +1,22 @@
+# Dramatool 重写规则
+# 作用：把不存在的路径统一交给 index.php 处理，静态资源直接返回。
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 已存在的文件/目录直接返回（assets、favicon 等）
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # 其余请求交给统一入口
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# 禁止目录列表
+Options -Indexes
+
+# 隐藏敏感文件
+<FilesMatch "^\.(env|git|htaccess)">
+    Require all denied
+</FilesMatch>

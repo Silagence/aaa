@@ -1,0 +1,207 @@
+/* 主题变量层
+ *
+ * 所有主题相关颜色集中在此定义，页面样式只引用变量，不写死颜色。
+ * 切换方式：<html data-theme="dark|light|sepia|auto">
+ *   - auto 表示跟随系统，由 theme.js 解析为 dark / light 后写入 data-theme
+ *   - 未设置 data-theme 时默认深色
+ *
+ * 变量分组：
+ *   背景   --bg-base / --bg-deep / --bg-elevated / --bg-soft / --bg-input
+ *   文字   --text / --text-soft / --text-muted
+ *   强调   --accent / --accent-2 / --accent-soft / --accent-line / --accent-glow
+ *   语义   --success / --danger / --warning
+ *   结构   --border / --border-strong / --radius / --shadow / --font-sans
+ */
+
+/* ===== 深色（默认） ===== */
+:root,
+[data-theme="dark"] {
+    color-scheme: dark;
+
+    --bg-base: #0b1020;
+    --bg-deep: #070b18;
+    --bg-elevated: rgba(20, 28, 50, 0.5);
+    --bg-soft: rgba(255, 255, 255, 0.03);
+    --bg-input: rgba(7, 11, 24, 0.6);
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-bar: rgba(7, 11, 24, 0.6);
+    --bg-topbar: rgba(11, 16, 32, 0.92);
+
+    --text: #e8ecf5;
+    --text-soft: #9aa6c0;
+    --text-muted: #5b647e;
+    --text-on-accent: #0b1020;
+
+    --accent: #6ea8ff;
+    --accent-2: #b488ff;
+    --accent-soft: rgba(110, 168, 255, 0.14);
+    --accent-line: rgba(110, 168, 255, 0.4);
+    --accent-glow: rgba(110, 168, 255, 0.4);
+    --accent-gradient: linear-gradient(135deg, #6ea8ff 0%, #b488ff 100%);
+
+    --success: #7ee0a8;
+    --danger: #ff6b6b;
+    --warning: #ffd86b;
+    --danger-soft: rgba(255, 107, 107, 0.1);
+    --danger-line: rgba(255, 107, 107, 0.35);
+    --warning-soft: rgba(240, 190, 90, 0.1);
+    --warning-line: rgba(240, 190, 90, 0.3);
+
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.2);
+    --overlay: rgba(3, 6, 14, 0.66);
+    --radius: 14px;
+    --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei",
+        "PingFang SC", "Hiragino Sans GB", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ===== 浅色 ===== */
+[data-theme="light"] {
+    color-scheme: light;
+
+    --bg-base: #f4f6fb;
+    --bg-deep: #e8ecf5;
+    --bg-elevated: rgba(255, 255, 255, 0.9);
+    --bg-soft: rgba(15, 23, 42, 0.03);
+    --bg-input: rgba(255, 255, 255, 0.9);
+    --bg-hover: rgba(15, 23, 42, 0.06);
+    --bg-bar: rgba(255, 255, 255, 0.8);
+    --bg-topbar: rgba(255, 255, 255, 0.92);
+
+    --text: #1b2337;
+    --text-soft: #4a5670;
+    --text-muted: #7b869e;
+    --text-on-accent: #ffffff;
+
+    --accent: #3b6fd4;
+    --accent-2: #7a4fd0;
+    --accent-soft: rgba(59, 111, 212, 0.12);
+    --accent-line: rgba(59, 111, 212, 0.4);
+    --accent-glow: rgba(59, 111, 212, 0.28);
+    --accent-gradient: linear-gradient(135deg, #3b6fd4 0%, #7a4fd0 100%);
+
+    --success: #1f9d63;
+    --danger: #d64545;
+    --warning: #b8860b;
+    --danger-soft: rgba(214, 69, 69, 0.1);
+    --danger-line: rgba(214, 69, 69, 0.35);
+    --warning-soft: rgba(184, 134, 11, 0.1);
+    --warning-line: rgba(184, 134, 11, 0.3);
+
+    --border: rgba(15, 23, 42, 0.12);
+    --border-strong: rgba(15, 23, 42, 0.28);
+    --overlay: rgba(15, 23, 42, 0.42);
+    --shadow: 0 18px 48px rgba(15, 23, 42, 0.14);
+}
+
+/* ===== 护眼（低饱和暖米色底） ===== */
+[data-theme="sepia"] {
+    color-scheme: light;
+
+    --bg-base: #f2e9d8;
+    --bg-deep: #e6dac4;
+    --bg-elevated: rgba(255, 251, 242, 0.92);
+    --bg-soft: rgba(90, 70, 40, 0.04);
+    --bg-input: rgba(255, 252, 245, 0.9);
+    --bg-hover: rgba(90, 70, 40, 0.08);
+    --bg-bar: rgba(250, 244, 232, 0.85);
+    --bg-topbar: rgba(250, 244, 232, 0.94);
+
+    --text: #3d3226;
+    --text-soft: #6b5b47;
+    --text-muted: #94836c;
+    --text-on-accent: #fffdf8;
+
+    --accent: #a8703c;
+    --accent-2: #8a6a3a;
+    --accent-soft: rgba(168, 112, 60, 0.14);
+    --accent-line: rgba(168, 112, 60, 0.42);
+    --accent-glow: rgba(168, 112, 60, 0.26);
+    --accent-gradient: linear-gradient(135deg, #b8813f 0%, #8a6a3a 100%);
+
+    --success: #4f7a3f;
+    --danger: #b04a3a;
+    --warning: #a8791f;
+    --danger-soft: rgba(176, 74, 58, 0.1);
+    --danger-line: rgba(176, 74, 58, 0.35);
+    --warning-soft: rgba(168, 121, 31, 0.1);
+    --warning-line: rgba(168, 121, 31, 0.3);
+
+    --border: rgba(90, 70, 40, 0.16);
+    --border-strong: rgba(90, 70, 40, 0.32);
+    --overlay: rgba(61, 50, 38, 0.42);
+    --shadow: 0 18px 48px rgba(90, 70, 40, 0.16);
+}
+
+/* ===== 跟随系统：未显式指定时按系统偏好取深/浅 ===== */
+@media (prefers-color-scheme: light) {
+    [data-theme="auto"] {
+        color-scheme: light;
+
+        --bg-base: #f4f6fb;
+        --bg-deep: #e8ecf5;
+        --bg-elevated: rgba(255, 255, 255, 0.9);
+        --bg-soft: rgba(15, 23, 42, 0.03);
+        --bg-input: rgba(255, 255, 255, 0.9);
+        --bg-hover: rgba(15, 23, 42, 0.06);
+        --bg-bar: rgba(255, 255, 255, 0.8);
+        --bg-topbar: rgba(255, 255, 255, 0.92);
+
+        --text: #1b2337;
+        --text-soft: #4a5670;
+        --text-muted: #7b869e;
+        --text-on-accent: #ffffff;
+
+        --accent: #3b6fd4;
+        --accent-2: #7a4fd0;
+        --accent-soft: rgba(59, 111, 212, 0.12);
+        --accent-line: rgba(59, 111, 212, 0.4);
+        --accent-glow: rgba(59, 111, 212, 0.28);
+        --accent-gradient: linear-gradient(135deg, #3b6fd4 0%, #7a4fd0 100%);
+
+        --success: #1f9d63;
+        --danger: #d64545;
+        --warning: #b8860b;
+        --danger-soft: rgba(214, 69, 69, 0.1);
+        --danger-line: rgba(214, 69, 69, 0.35);
+        --warning-soft: rgba(184, 134, 11, 0.1);
+        --warning-line: rgba(184, 134, 11, 0.3);
+
+        --border: rgba(15, 23, 42, 0.12);
+        --border-strong: rgba(15, 23, 42, 0.28);
+        --overlay: rgba(15, 23, 42, 0.42);
+        --shadow: 0 18px 48px rgba(15, 23, 42, 0.14);
+    }
+}
+
+/* ===== 主题切换过渡（避免切换瞬间生硬） ===== */
+html {
+    background: var(--bg-base);
+}
+
+body,
+.appbar,
+.topbar,
+.card,
+.work-card,
+.auth__card,
+.field__input,
+.field__select,
+.field__textarea {
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body,
+    .appbar,
+    .topbar,
+    .card,
+    .work-card,
+    .auth__card,
+    .field__input,
+    .field__select,
+    .field__textarea {
+        transition: none;
+    }
+}

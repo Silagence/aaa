@@ -1,0 +1,40 @@
+<?php
+/**
+ * 本地配置示例
+ *
+ * 复制本文件为 config/local.php 并填写真实值。
+ * config/local.php 已被 .gitignore 忽略，不会提交到版本库。
+ */
+
+return [
+    'app' => [
+        'env'   => 'development',
+        'debug' => true,
+        'url'   => 'http://127.0.0.1:8000',
+    ],
+
+    'db' => [
+        'host'     => '127.0.0.1',
+        'port'     => 3306,
+        'database' => 'dramatool',
+        'username' => 'root',
+        'password' => '',
+    ],
+
+    // 邮件配置（不配置时默认使用 log 驱动，邮件写入 storage/mail 日志）
+    'mail' => [
+        'driver' => 'log', // 生产环境改为 smtp
+        'from'   => [
+            'address' => 'noreply@example.com',
+            'name'    => 'Dramatool',
+        ],
+        'smtp'   => [
+            'host'       => 'smtp.example.com',
+            'port'       => 465,
+            'encryption' => 'ssl', // ssl / starttls / none
+            'username'   => '',
+            'password'   => '',
+            'timeout'    => 10,
+        ],
+    ],
+];

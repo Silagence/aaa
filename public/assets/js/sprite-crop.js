@@ -274,7 +274,7 @@
     function show(asset) {
         build();
         cur = asset;
-        var saved = window.AshaEditor.getTransform(asset.id);
+        var saved = window.DramatoolEditor.getTransform(asset.id);
         tf = saved
             ? { scale: saved.scale, offsetX: saved.offsetX, offsetY: saved.offsetY }
             : { scale: 1, offsetX: 0, offsetY: 0 };
@@ -289,7 +289,7 @@
             syncControls();
             apply();
         };
-        imgEl.src = 'assets/' + asset.src;
+        imgEl.src = /^(assets|uploads)\//.test(asset.src) ? asset.src : 'assets/' + asset.src;
         if (imgEl.complete && imgEl.naturalWidth) imgEl.onload();
     }
 
@@ -302,14 +302,14 @@
         var isDefault = Math.abs(tf.scale - 1) < 0.001 &&
                         Math.abs(tf.offsetX) < 0.0005 &&
                         Math.abs(tf.offsetY) < 0.0005;
-        window.AshaEditor.setTransform(cur.id, isDefault ? null : {
+        window.DramatoolEditor.setTransform(cur.id, isDefault ? null : {
             scale: Math.round(tf.scale * 1000) / 1000,
             offsetX: Math.round(tf.offsetX * 10000) / 10000,
             offsetY: Math.round(tf.offsetY * 10000) / 10000
         });
         hide();
-        window.AshaEditor.toast(isDefault ? '已恢复默认构图' : '已应用调整，该立绘将自动套用');
+        window.DramatoolEditor.toast(isDefault ? '已恢复默认构图' : '已应用调整，该立绘将自动套用');
     }
 
-    window.AshaSpriteCrop = { show: show };
+    window.DramatoolSpriteCrop = { show: show };
 })();

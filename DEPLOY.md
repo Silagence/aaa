@@ -1,4 +1,4 @@
-# Asha 部署说明（Linux）
+# Dramatool 部署说明（Linux）
 
 文字冒险游戏（AVG）在线编辑器网站。纯 PHP 静态站点，无第三方依赖。
 
@@ -27,26 +27,37 @@ public/                 # 网站根目录（DocumentRoot 指向此处）
     ├── bg/             # 背景素材
     ├── sprites/        # 立绘素材
     └── manifest.json   # 素材清单
+storage/
+└── uploads/            # 用户上传素材（在 public 之外，需 Nginx 映射为 /uploads/）
+    └── {userId}/{type}/{yyyyMM}/{hash}.{ext}
 ```
+
+> 用户上传的素材存放在 `storage/uploads/`，位于网站根目录之外，无法被直接访问；
+> 通过 Nginx 的 `location /uploads/` 映射对外提供只读访问（见下文配置）。
 
 ## 三、部署步骤
 
 ### 1. 上传并解压
 
 ```bash
-# 上传 asha-public.tar.gz 到服务器后
-mkdir -p /var/www/asha
-tar -xzf asha-public.tar.gz -C /var/www/asha
+# 上传 dramatool-public.tar.gz 到服务器后
+mkdir -p /var/www/dramatool
+tar -xzf dramatool-public.tar.gz -C /var/www/dramatool
 ```
 
-解压后 `/var/www/asha/public` 即为网站根目录。
+解压后 `/var/www/dramatool/public` 即为网站根目录。
 
 ### 2. 设置权限
 
 ```bash
-chown -R www-data:www-data /var/www/asha
-find /var/www/asha -type d -exec chmod 755 {} \;
-find /var/www/asha -type f -exec chmod 644 {} \;
+chown -R www-data:www-data /var/www/dramatool
+find /var/www/dramatool -type d -exec chmod 755 {} \;
+find /var/www/dramatool -type f -exec chmod 644 {} \;
+
+# 用户上传目录：需对 PHP-FPM 运行用户可写
+mkdir -p /var/www/dramatool/storage/uploads
+chown -R www-data:www-data /var/www/dramatool/storage
+chmod -R 755 /var/www/dramatool/storage
 ```
 
 > 若服务器用户组不是 `www-data`（如 CentOS 为 `nginx`），请相应替换。
@@ -69,7 +80,7 @@ grep -rh '^listen =' /etc/php-fpm.d/ /etc/php/*/fpm/pool.d/ 2>/dev/null
 
 **第二步：根据 listen 值编写 Nginx 配置**
 
-新建 `/etc/nginx/conf.d/asha.conf`：
+新建 `/etc/nginx/conf.d/dramatool.conf`：
 
 **情况 A：PHP-FPM 使用 Unix Socket**
 
@@ -78,7 +89,7 @@ server {
     listen 80;
     server_name your-domain.com;   # 替换为你的域名或服务器 IP
 
-    root /var/www/asha/public;
+    root /var/www/dramatool/public;
     index index.php index.html;
 
     location / {
@@ -89,6 +100,16 @@ server {
         include fastcgi_params;
         fastcgi_pass unix:/run/php/php8.1-fpm.sock;  # 与 grep 结果完全一致
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+
+    # 用户上传素材：映射到 public 之外的 storage/uploads
+    # 必须放在 .php 规则之后，且显式禁止 PHP 解析（防止上传文件被当作脚本执行）
+    location /uploads/ {
+        alias /var/www/dramatool/storage/uploads/;
+        location ~ \.php$ { return 403; }
+        expires 7d;
+        add_header Cache-Control "public";
+        add_header X-Content-Type-Options "nosniff";
     }
 
     # 静态资源缓存
@@ -106,7 +127,7 @@ server {
     listen 80;
     server_name your-domain.com;
 
-    root /var/www/asha/public;
+    root /var/www/dramatool/public;
     index index.php index.html;
 
     location / {
@@ -117,6 +138,16 @@ server {
         include fastcgi_params;
         fastcgi_pass 127.0.0.1:9000;   # 与 grep 结果完全一致
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+
+    # 用户上传素材：映射到 public 之外的 storage/uploads
+    # 必须放在 .php 规则之后，且显式禁止 PHP 解析（防止上传文件被当作脚本执行）
+    location /uploads/ {
+        alias /var/www/dramatool/storage/uploads/;
+        location ~ \.php$ { return 403; }
+        expires 7d;
+        add_header Cache-Control "public";
+        add_header X-Content-Type-Options "nosniff";
     }
 
     location ~* \.(css|js|svg|png|jpg|jpeg|gif|ico|woff2?)$ {
@@ -144,9 +175,9 @@ systemctl reload nginx
 ```apache
 <VirtualHost *:80>
     ServerName your-domain.com
-    DocumentRoot /var/www/asha/public
+    DocumentRoot /var/www/dramatool/public
 
-    <Directory /var/www/asha/public>
+    <Directory /var/www/dramatool/public>
         AllowOverride All
         Require all granted
     </Directory>
@@ -158,13 +189,17 @@ systemctl reload nginx
 在服务器上直接用 PHP 内置服务器测试：
 
 ```bash
-cd /var/www/asha/public
+cd /var/www/dramatool/public
 php -S 0.0.0.0:8000
 ```
 
 浏览器访问 `http://服务器IP:8000/`。
 
 > 注意：PHP 内置服务器仅用于测试，生产环境请使用 Nginx/Apache。
+>
+> 用户上传素材存放在 `public` 之外的 `storage/uploads/`，PHP 内置服务器无法直接访问 `/uploads/`。
+> 本地验证上传功能时，请改用项目根目录下的启动脚本（会自动把 `/uploads/` 路由到 `storage/uploads/`），
+> 或临时创建软链接：`ln -s ../storage/uploads public/uploads`（Windows 下用 `mklink /D`）。
 
 ## 六、常见问题
 

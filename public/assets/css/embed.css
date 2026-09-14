@@ -1,0 +1,26 @@
+/* 嵌入播放页样式（/embed/{code}）
+ * 仅保留舞台，去掉页面级留白，使 iframe 内铺满可用区域。
+ */
+
+.embed-body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--bg-deep);
+}
+
+.embed-body .stage {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+}
+
+.embed-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100vw;
+    height: 100vh;
+    font-size: 15px;
+    color: var(--text-muted);
+}

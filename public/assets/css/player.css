@@ -4,7 +4,7 @@
     margin: 0;
     height: 100vh;
     overflow: hidden;
-    background: #000;
+    background: var(--bg-deep);
     font-family: var(--font-sans);
     color: var(--text);
     user-select: none;
@@ -17,7 +17,7 @@
     width: 100vw;
     height: 100vh;
     overflow: hidden;
-    background: #000;
+    background: var(--bg-deep);
     cursor: pointer;
 }
 
@@ -33,7 +33,7 @@
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    background-color: #1a1a2e;
+    background-color: var(--bg-elevated);
     transition: opacity 0.6s ease, background-image 0.6s ease;
 }
 .bg-layer-player.is-fading {
@@ -86,12 +86,12 @@
     bottom: 5%;
     transform: translateX(-50%);
     width: min(900px, 90%);
-    background: rgba(8, 12, 24, 0.82);
+    background: var(--bg-topbar);
     border: 1px solid var(--border);
     border-radius: 14px;
     padding: 18px 24px 22px;
     backdrop-filter: blur(8px);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    box-shadow: var(--shadow);
     z-index: 5;
     cursor: pointer;
 }
@@ -150,7 +150,7 @@
 
 .choice {
     padding: 14px 20px;
-    background: rgba(8, 12, 24, 0.82);
+    background: var(--bg-topbar);
     border: 1px solid var(--border);
     border-radius: 10px;
     color: var(--text);
@@ -163,7 +163,7 @@
 }
 .choice:hover {
     border-color: var(--accent);
-    background: rgba(110, 168, 255, 0.14);
+    background: var(--accent-soft);
     transform: translateY(-2px);
 }
 
@@ -175,7 +175,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 16px;
-    background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+    background: linear-gradient(180deg, var(--bg-bar), transparent);
     color: var(--text-soft);
     font-size: 13px;
     z-index: 10;
@@ -187,7 +187,7 @@
 .tag {
     font-size: 11px;
     color: var(--text-muted);
-    background: rgba(255,255,255,0.06);
+    background: var(--bg-hover);
     padding: 2px 8px;
     border-radius: 6px;
     font-family: ui-monospace, "Cascadia Code", monospace;
@@ -197,14 +197,14 @@
     padding: 6px 10px;
     font-size: 12px;
     color: var(--text-soft);
-    background: rgba(0,0,0,0.4);
+    background: var(--bg-bar);
     border: 1px solid var(--border);
     border-radius: 8px;
     cursor: pointer;
     font-family: inherit;
     transition: background 0.15s, color 0.15s;
 }
-.icon-btn:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+.icon-btn:hover { color: var(--text); background: var(--bg-hover); }
 .icon-btn.is-active { color: var(--accent); border-color: var(--accent); }
 
 /* ===== 剧终 ===== */
@@ -216,7 +216,7 @@
     align-items: center;
     justify-content: center;
     gap: 12px;
-    background: radial-gradient(ellipse at center, #1a1a2e 0%, #000 80%);
+    background: radial-gradient(ellipse at center, var(--bg-elevated) 0%, var(--bg-deep) 80%);
     z-index: 8;
 }
 .ending[hidden] { display: none; }
@@ -237,10 +237,10 @@
     transform: translateX(-50%);
     max-width: 80%;
     padding: 16px 20px;
-    background: rgba(40, 12, 12, 0.92);
-    border: 1px solid #ff6b6b;
+    background: var(--bg-elevated);
+    border: 1px solid var(--danger);
     border-radius: 10px;
-    color: #ffb8b8;
+    color: var(--danger);
     font-size: 14px;
     z-index: 20;
     white-space: pre-wrap;
@@ -319,7 +319,7 @@
     height: 54px;
     border-radius: 4px;
     overflow: hidden;
-    background: #000;
+    background: var(--bg-deep);
     border: 1px solid var(--border);
 }
 .save-slot__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -329,7 +329,7 @@
     justify-content: center;
     font-size: 11px;
     color: var(--text-muted);
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-soft);
 }
 .save-slot__info { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .save-slot__title { color: var(--text); }
@@ -342,7 +342,7 @@
     border-radius: 6px; cursor: pointer; font-family: inherit;
 }
 .save-slot__btn:hover { color: var(--text); border-color: var(--accent); }
-.save-slot__btn--del:hover { color: #ff6b6b; border-color: #ff6b6b; }
+.save-slot__btn--del:hover { color: var(--danger); border-color: var(--danger); }
 
 /* 设置 */
 .setting-row {
@@ -362,7 +362,7 @@
     position: fixed; bottom: 24px; left: 50%;
     transform: translateX(-50%);
     padding: 8px 16px;
-    background: rgba(20,28,50,0.95);
+    background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: 999px;
     color: var(--text); font-size: 13px;

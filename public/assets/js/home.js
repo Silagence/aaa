@@ -11,4 +11,14 @@
             location.href = 'editor.php';
         });
     }
+
+    var btnTheme = document.getElementById('btnTheme');
+    if (btnTheme) {
+        btnTheme.addEventListener('click', function () {
+            if (!window.DramatoolTheme) return;
+            window.DramatoolTheme.cycle();
+            var names = { dark: '深色', light: '浅色', sepia: '护眼', auto: '跟随系统' };
+            btnTheme.textContent = '主题：' + (names[window.DramatoolTheme.get()] || '');
+        });
+    }
 })();

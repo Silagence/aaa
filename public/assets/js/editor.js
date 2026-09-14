@@ -8,8 +8,8 @@
     'use strict';
 
     // ============ 常量 ============
-    var STORAGE_KEY = 'asha:editor:draft';
-    var PREVIEW_KEY = 'asha:preview';
+    var STORAGE_KEY = 'dramatool:editor:draft';
+    var PREVIEW_KEY = 'dramatool:preview';
     var NODE_TYPES = ['bg', 'sprite', 'spriteRemove', 'bgm', 'sfx', 'say', 'choose', 'var', 'goto'];
     // var 节点 if 条件支持的比较运算符（见需求文档 6.3）
     var CONDITION_OPS = ['==', '!=', '>', '>=', '<', '<='];
@@ -45,6 +45,10 @@
     // ============ 状态 ============
     var state = {
         assets: { backgrounds: [], sprites: [], bgm: [], sfx: [] },
+        myAssets: { backgrounds: [], sprites: [], bgm: [], sfx: [] },
+        assetSource: 'builtin',   // 素材来源：builtin（内置）/ mine（我的）
+        usage: null,              // 我的素材配额用量 {bytes,count,quota_bytes,quota_count}
+        licenses: {},             // 版权协议选项 {key: label}
         work: null,
         selectedSceneId: null,
         selectedNodeIndex: -1,
@@ -66,7 +70,7 @@
                 name: '未命名作品',
                 author: '',
                 version: '1.0.0',
-                engine: 'asha@1.0',
+                engine: 'dramatool@1.0',
                 startScene: 'scene_001',
                 canvas: { width: 1280, height: 720, orientation: 'landscape' }
             },
@@ -84,11 +88,13 @@
         state.selectedSceneId = null;
         state.selectedNodeIndex = -1;
         state.activeAssetTab = 'bg';
+        state.assetSource = 'builtin';
         ensureFirstScene();
         // tabs 高亮复位到"背景"
         Array.prototype.forEach.call($('assetTabs').children, function (c, i) {
             c.classList.toggle('is-active', i === 0);
         });
+        syncAssetSourceTabs();
         renderAll();
         saveDraft();
         resetHistory();
@@ -130,7 +136,8 @@
         t.className = 'toast' + (type ? ' toast--' + type : '');
         t.hidden = false;
         clearTimeout(t._timer);
-        t._timer = setTimeout(function () { t.hidden = true; }, 2000);
+        // 错误提示（如"素材被作品引用无法删除"）信息较长，延长展示时间
+        t._timer = setTimeout(function () { t.hidden = true; }, type === 'err' ? 4000 : 2000);
     }
 
     // ============ 持久化 ============
@@ -255,6 +262,7 @@
     }
 
     // ============ 素材库加载 ============
+    // 内置素材来自 assets/manifest.json；用户素材来自 /api/assets（需登录）。
     function loadAssets(cb) {
         var xhr = new XMLHttpRequest();
         xhr.open('GET', 'assets/manifest.json', true);
@@ -271,19 +279,44 @@
                     };
                 } catch (e) { console.warn('manifest 解析失败', e); }
             }
-            cb();
+            loadMyAssets(cb);
         };
         xhr.send();
     }
 
+    // 加载当前用户上传的素材；未登录时静默跳过
+    function loadMyAssets(cb) {
+        if (!cloudReady()) { cb(); return; }
+        fetch(apiUrl('api/assets'), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        }).then(function (res) {
+            return res.json().catch(function () { return { ok: false }; });
+        }).then(function (res) {
+            if (res && res.ok) {
+                state.myAssets = res.assets || state.myAssets;
+                state.usage = res.usage || null;
+                state.licenses = res.licenses || {};
+            }
+            cb();
+        }).catch(function () { cb(); });
+    }
+
+    // 当前素材来源下的素材列表
     function assetListByTab(tab) {
+        var src = state.assetSource === 'mine' ? state.myAssets : state.assets;
         switch (tab) {
-            case 'bg':     return state.assets.backgrounds;
-            case 'sprite': return state.assets.sprites;
-            case 'bgm':    return state.assets.bgm;
-            case 'sfx':    return state.assets.sfx;
+            case 'bg':     return src.backgrounds || [];
+            case 'sprite': return src.sprites || [];
+            case 'bgm':    return src.bgm || [];
+            case 'sfx':    return src.sfx || [];
         }
         return [];
+    }
+    // 素材相对 public 的完整地址：内置素材在 assets/ 下，用户素材在 uploads/ 下
+    function assetUrl(item) {
+        if (!item || !item.src) return '';
+        return /^(assets|uploads)\//.test(item.src) ? item.src : 'assets/' + item.src;
     }
     function findAsset(tab, id) {
         var list = assetListByTab(tab);
@@ -316,7 +349,7 @@
     // 因此第一级只渲染角色卡片（数量级为角色数），进入角色后才渲染其立绘。
     function spriteCategories() {
         var seen = {}, out = [];
-        state.assets.sprites.forEach(function (a) {
+        assetListByTab('sprite').forEach(function (a) {
             var c = a.category || '其他';
             if (!seen[c]) { seen[c] = true; out.push(c); }
         });
@@ -326,7 +359,7 @@
     // 按 类型 → 角色 聚合，返回角色数组
     function buildCharacterList() {
         var map = {}, out = [];
-        state.assets.sprites.forEach(function (a) {
+        assetListByTab('sprite').forEach(function (a) {
             var cat = a.category || '其他';
             var ch = a.character || '未设置角色';
             var key = cat + '\u0000' + ch;
@@ -363,6 +396,7 @@
         grid.classList.toggle('asset-grid--list', state.assetView === 'list');
         var isSprite = (state.activeAssetTab === 'sprite');
         $('spriteFilter').hidden = !isSprite;
+        renderAssetUsage();
 
         if (isSprite) {
             renderSpriteFilter();
@@ -372,12 +406,36 @@
 
         var list = assetListByTab(state.activeAssetTab);
         if (!list.length) {
-            grid.appendChild(el('p', 'placeholder', '此分类暂无素材'));
+            grid.appendChild(el('p', 'placeholder',
+                state.assetSource === 'mine' ? '还没有上传素材，点击右上角「+ 上传」' : '此分类暂无素材'));
             return;
         }
         list.forEach(function (item) {
             grid.appendChild(buildAssetCard(item, state.activeAssetTab === 'bgm' || state.activeAssetTab === 'sfx'));
         });
+    }
+
+    // 配额用量提示（仅"我的素材"下显示）
+    function renderAssetUsage() {
+        var box = $('assetUsage');
+        if (!box) return;
+        if (state.assetSource !== 'mine' || !state.usage) {
+            box.hidden = true;
+            return;
+        }
+        var u = state.usage;
+        var text = '已用 ' + formatBytes(u.bytes) + ' / ' + formatBytes(u.quota_bytes) +
+                   ' · ' + u.count + ' / ' + u.quota_count + ' 个';
+        box.textContent = text;
+        box.hidden = false;
+        box.classList.toggle('is-full', u.count >= u.quota_count || u.bytes >= u.quota_bytes);
+    }
+
+    function formatBytes(bytes) {
+        bytes = Number(bytes) || 0;
+        if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + 'MB';
+        if (bytes >= 1024) return Math.round(bytes / 1024) + 'KB';
+        return bytes + 'B';
     }
 
     // 立绘面板：根据是否已选中角色，渲染角色列表或立绘详情
@@ -421,7 +479,7 @@
             var card = el('div', 'char-item');
             var thumb = el('div', 'char-item__thumb');
             var img = document.createElement('img');
-            img.src = 'assets/' + c.items[0].thumb;
+            img.src = assetUrl(c.items[0]);
             img.alt = c.character;
             img.loading = 'lazy';
             img.draggable = false;
@@ -429,7 +487,7 @@
             card.appendChild(thumb);
             // 悬停预览该角色的首张立绘
             thumb.addEventListener('mouseenter', function () {
-                showPreview('assets/' + c.items[0].src, c.character, card);
+                showPreview(assetUrl(c.items[0]), c.character, card);
             });
             thumb.addEventListener('mouseleave', hidePreview);
 
@@ -533,7 +591,7 @@
     function toggleAudioPreview(item, card) {
         if (audioCard === card) { stopAudioPreview(); return; }
         stopAudioPreview();
-        var a = new Audio('assets/' + item.src);
+        var a = new Audio(assetUrl(item));
         a.volume = 0.8;
         a.addEventListener('ended', stopAudioPreview);
         a.play().catch(function () { toast('无法播放该音频', 'err'); });
@@ -556,14 +614,14 @@
             });
         } else {
             var img = document.createElement('img');
-            img.src = 'assets/' + item.thumb;
+            img.src = assetUrl(item);
             img.alt = item.name;
             img.loading = 'lazy';
             img.draggable = false;
             thumb.appendChild(img);
             // 悬停预览完整图片
             thumb.addEventListener('mouseenter', function () {
-                showPreview('assets/' + item.src, item.name, card);
+                showPreview(assetUrl(item), item.name, card);
             });
             thumb.addEventListener('mouseleave', hidePreview);
         }
@@ -575,6 +633,22 @@
         // 元信息：图片显示分辨率，音频显示时长（需求 4.2.4 第 2 点）
         var metaText = assetMetaText(item);
         if (metaText) card.appendChild(el('div', 'asset-item__meta', metaText));
+        // 我的素材：显示可见范围与版权协议，并提供管理入口
+        if (item.mine) {
+            var lic = state.licenses[item.license] || item.license || '';
+            var badge = el('div', 'asset-item__badge' + (item.visibility === 1 ? ' is-public' : ''),
+                (item.visibility === 1 ? '公开' : '私人') + (lic ? ' · ' + escapeHtml(lic) : ''));
+            badge.title = lic;
+            card.appendChild(badge);
+            var manage = el('button', 'asset-item__adj', '管理');
+            manage.type = 'button';
+            manage.title = '修改可见范围 / 版权协议，或删除该素材';
+            manage.addEventListener('click', function (e) {
+                e.stopPropagation();
+                openAssetManage(item);
+            });
+            card.appendChild(manage);
+        }
         // 立绘提供构图调整入口：缩放/裁剪结果按素材 id 记住，之后引用自动套用
         if (state.activeAssetTab === 'sprite') {
             var adj = el('button', 'asset-item__adj', '调整');
@@ -583,7 +657,7 @@
             if (hasSpriteTransform(item.id)) adj.classList.add('is-set');
             adj.addEventListener('click', function (e) {
                 e.stopPropagation();
-                window.AshaSpriteCrop.show(item);
+                window.DramatoolSpriteCrop.show(item);
             });
             card.appendChild(adj);
         }
@@ -646,6 +720,176 @@
 
     function onAssetClick(item) {
         insertAssetNode(state.activeAssetTab, item, null);
+    }
+
+    // ============ 我的素材：上传 / 管理 / 删除 ============
+    var uploadCfg = (ctx.upload || {});
+
+    function openUpload() {
+        if (!cloudReady()) {
+            toast('请先登录后再上传素材', 'err');
+            setTimeout(function () { location.href = apiUrl('login'); }, 800);
+            return;
+        }
+        // 默认上传类型跟随当前素材分类
+        $('uploadType').value = state.activeAssetTab;
+        $('uploadFile').value = '';
+        $('uploadVisibility').value = '0';
+        renderLicenseOptions();
+        updateUploadHint();
+        $('uploadModal').hidden = false;
+    }
+
+    function closeUpload() {
+        $('uploadModal').hidden = true;
+    }
+
+    // 版权协议下拉：选项由后端 config/upload.licenses 注入
+    function renderLicenseOptions() {
+        var sel = $('uploadLicense');
+        sel.innerHTML = '';
+        var list = uploadCfg.licenses || {};
+        Object.keys(list).forEach(function (k) {
+            var o = el('option', '', escapeHtml(list[k]));
+            o.value = k;
+            sel.appendChild(o);
+        });
+    }
+
+    // 按当前类型提示允许的格式与单文件大小上限
+    function updateUploadHint() {
+        var type = $('uploadType').value;
+        var exts = (uploadCfg.allowed || {})[type] || [];
+        var max = uploadCfg.maxSize ? formatBytes(uploadCfg.maxSize) : '';
+        $('uploadHint').textContent = exts.length
+            ? '（' + exts.join('/') + '，单个不超过 ' + max + '）'
+            : '';
+    }
+
+    function doUpload() {
+        var fileInput = $('uploadFile');
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) { toast('请先选择文件', 'err'); return; }
+
+        var type = $('uploadType').value;
+        var exts = (uploadCfg.allowed || {})[type] || [];
+        var ext = (file.name.split('.').pop() || '').toLowerCase();
+        if (exts.indexOf(ext) < 0) {
+            toast('不支持的文件格式，仅允许：' + exts.join('、'), 'err');
+            return;
+        }
+        if (uploadCfg.maxSize && file.size > uploadCfg.maxSize) {
+            toast('文件超过 ' + formatBytes(uploadCfg.maxSize) + ' 限制', 'err');
+            return;
+        }
+
+        var fd = new FormData();
+        fd.append('file', file);
+        fd.append('type', type);
+        fd.append('visibility', $('uploadVisibility').value);
+        fd.append('license', $('uploadLicense').value);
+        fd.append('_token', ctx.csrfToken);
+
+        var btn = $('btnDoUpload');
+        btn.disabled = true;
+        btn.textContent = '上传中…';
+
+        fetch(apiUrl('api/assets'), {
+            method: 'POST',
+            headers: {
+                'X-CSRF-Token': ctx.csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: fd,
+            credentials: 'same-origin'
+        }).then(function (res) {
+            return res.json().catch(function () {
+                return { ok: false, message: '服务器返回异常（HTTP ' + res.status + '）' };
+            });
+        }).then(function (res) {
+            btn.disabled = false;
+            btn.textContent = '开始上传';
+            if (!res.ok) {
+                if (res.need_login) {
+                    toast('登录已过期，请重新登录', 'err');
+                    setTimeout(function () { location.href = apiUrl('login'); }, 800);
+                    return;
+                }
+                toast(res.message || '上传失败', 'err');
+                return;
+            }
+            closeUpload();
+            toast(res.message || '上传成功');
+            // 切到"我的素材"并刷新列表
+            state.assetSource = 'mine';
+            syncAssetSourceTabs();
+            loadMyAssets(function () {
+                state.activeAssetTab = type;
+                syncAssetTabs();
+                renderAssetGrid();
+            });
+        }).catch(function () {
+            btn.disabled = false;
+            btn.textContent = '开始上传';
+            toast('网络异常，上传失败', 'err');
+        });
+    }
+
+    // 素材管理：修改可见范围 / 版权协议 / 删除
+    function openAssetManage(item) {
+        var lic = state.licenses[item.license] || item.license || '';
+        var msg = '素材：' + item.name + '\n' +
+                  '当前：' + (item.visibility === 1 ? '公开使用' : '私人使用') +
+                  (lic ? ' · ' + lic : '') + '\n\n' +
+                  '输入 1 改为「公开使用」，输入 0 改为「私人使用」，输入 d 删除该素材。';
+        var ans = (window.prompt(msg, item.visibility === 1 ? '1' : '0') || '').trim().toLowerCase();
+        if (ans === '') return;
+        if (ans === 'd') { deleteAsset(item); return; }
+        if (ans !== '0' && ans !== '1') { toast('请输入 0、1 或 d', 'err'); return; }
+        var visibility = ans === '1' ? 1 : 0;
+        if (visibility === item.visibility) return;
+
+        cloudPost('api/assets/' + item.assetId + '/meta', {
+            visibility: visibility,
+            _token: ctx.csrfToken
+        }).then(function (res) {
+            if (!res.ok) { toast(res.message || '修改失败', 'err'); return; }
+            toast('已改为' + (visibility === 1 ? '公开使用' : '私人使用'));
+            loadMyAssets(renderAssetGrid);
+        }).catch(function () { toast('网络异常，修改失败', 'err'); });
+    }
+
+    function deleteAsset(item) {
+        if (!window.confirm('确定删除素材「' + item.name + '」吗？此操作不可恢复。')) return;
+        cloudPost('api/assets/' + item.assetId + '/delete', { _token: ctx.csrfToken })
+            .then(function (res) {
+                if (!res.ok) {
+                    // 被作品引用时后端返回 409，提示具体作品名
+                    toast(res.message || '删除失败', 'err');
+                    return;
+                }
+                toast('素材已删除');
+                loadMyAssets(renderAssetGrid);
+            }).catch(function () { toast('网络异常，删除失败', 'err'); });
+    }
+
+    // 同步素材来源 tab 高亮
+    function syncAssetSourceTabs() {
+        var box = $('assetSourceTabs');
+        if (!box) return;
+        Array.prototype.forEach.call(box.children, function (c) {
+            c.classList.toggle('is-active', c.dataset.source === state.assetSource);
+        });
+    }
+
+    // 同步素材分类 tab 高亮
+    function syncAssetTabs() {
+        var box = $('assetTabs');
+        if (!box) return;
+        Array.prototype.forEach.call(box.children, function (c) {
+            c.classList.toggle('is-active', c.dataset.tab === state.activeAssetTab);
+        });
     }
 
     // ============ 素材拖拽插入（需求 4.2.4 第 3 点） ============
@@ -772,7 +1016,7 @@
         if (!a) return null;
         var box = el('div', 'node__thumb');
         var img = document.createElement('img');
-        img.src = 'assets/' + a.thumb;
+        img.src = assetUrl(a);
         img.alt = a.name || '';
         img.loading = 'lazy';
         img.draggable = false;
@@ -784,7 +1028,7 @@
         box.appendChild(img);
         // 悬停预览完整图片
         box.addEventListener('mouseenter', function () {
-            showPreview('assets/' + a.src, a.name, box);
+            showPreview(assetUrl(a), a.name, box);
         });
         box.addEventListener('mouseleave', hidePreview);
         return box;
@@ -1082,7 +1326,7 @@
         if (a && hasSpriteTransform(a.id)) adj.textContent = '调整构图（已修改）';
         adj.addEventListener('click', function () {
             if (!a) { toast('请先选择立绘素材', 'err'); return; }
-            window.AshaSpriteCrop.show(a);
+            window.DramatoolSpriteCrop.show(a);
         });
         w.appendChild(fieldRow('缩放/裁剪', '')).appendChild(adj);
 
@@ -1434,13 +1678,13 @@
         var m = w.manifest;
         var cv = w.canvas || m.canvas || { width: 1280, height: 720 };
         var lines = [];
-        lines.push('# Asha 剧本脚本（TXT 格式，可读备份）');
+        lines.push('# Dramatool 剧本脚本（TXT 格式，可读备份）');
         lines.push('# 语法：<类型>:<字段>...;  场景以 #scene <id> 开始');
         lines.push('');
         lines.push('#meta name=' + txtEsc(m.name || ''));
         lines.push('#meta author=' + txtEsc(m.author || ''));
         lines.push('#meta version=' + txtEsc(m.version || '1.0.0'));
-        lines.push('#meta engine=' + txtEsc(m.engine || 'asha@1.0'));
+        lines.push('#meta engine=' + txtEsc(m.engine || 'dramatool@1.0'));
         lines.push('#meta startScene=' + txtEsc(m.startScene || ''));
         lines.push('#meta canvas=' + (cv.width || 1280) + 'x' + (cv.height || 720));
         lines.push('');
@@ -1735,11 +1979,25 @@
         var w = state.work;
         // 组装 assets 段（来自 manifest 的素材清单 + 实际被引用的素材）
         var assets = [];
+        var seen = {};
         ['backgrounds', 'sprites', 'bgm', 'sfx'].forEach(function (k) {
             var typeMap = { backgrounds: 'bg', sprites: 'sprite', bgm: 'bgm', sfx: 'sfx' };
             var t = typeMap[k];
             state.assets[k].forEach(function (a) {
                 assets.push({ type: t, id: a.id, src: a.src });
+                seen[a.id] = true;
+            });
+        });
+        // 用户素材：仅导出被剧本实际引用的，避免把整个素材库写进作品
+        var used = collectUsedRefs();
+        ['backgrounds', 'sprites', 'bgm', 'sfx'].forEach(function (k) {
+            var typeMap = { backgrounds: 'bg', sprites: 'sprite', bgm: 'bgm', sfx: 'sfx' };
+            var t = typeMap[k];
+            (state.myAssets[k] || []).forEach(function (a) {
+                if (used[a.id] && !seen[a.id]) {
+                    assets.push({ type: t, id: a.id, src: a.src });
+                    seen[a.id] = true;
+                }
             });
         });
         return {
@@ -1757,6 +2015,17 @@
             assets: assets,
             scenes: w.scenes
         };
+    }
+
+    // 收集剧本中所有节点引用到的素材 id
+    function collectUsedRefs() {
+        var used = {};
+        (state.work.scenes || []).forEach(function (sc) {
+            (sc.nodes || []).forEach(function (n) {
+                if (n.ref) used[n.ref] = true;
+            });
+        });
+        return used;
     }
 
     // 导出格式：'json' | 'txt'
@@ -1784,7 +2053,7 @@
     function downloadJson() {
         var content = $('exportArea').value;
         var ext = exportFormat === 'txt' ? '.txt' : '.json';
-        var name = (state.work.manifest.name || 'asha-work') + ext;
+        var name = (state.work.manifest.name || 'dramatool-work') + ext;
         var mime = exportFormat === 'txt' ? 'text/plain' : 'application/json';
         var blob = new Blob([content], { type: mime + ';charset=utf-8' });
         var url = URL.createObjectURL(blob);
@@ -1879,6 +2148,230 @@
         resetHistory();
     }
 
+    // ============ 云端保存 / 加载（二期） ============
+    // 依赖服务端注入的 window.DRAMATOOL_CTX = { baseUrl, csrfToken, user }
+    var ctx = window.DRAMATOOL_CTX || {};
+    var cloudId = 0;          // 当前作品在云端的 id，0 表示尚未保存过
+    var cloudSaving = false;
+
+    function cloudReady() { return !!(ctx.user && ctx.csrfToken); }
+
+    function apiUrl(path) {
+        var base = (ctx.baseUrl || '/').replace(/\/+$/, '');
+        return base + '/' + String(path).replace(/^\/+/, '');
+    }
+
+    function cloudPost(path, data) {
+        var body = new URLSearchParams(data).toString();
+        return fetch(apiUrl(path), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-CSRF-Token': ctx.csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: body,
+            credentials: 'same-origin'
+        }).then(function (res) {
+            return res.json().catch(function () {
+                return { ok: false, message: '服务器返回异常（HTTP ' + res.status + '）' };
+            });
+        });
+    }
+
+    // 保存到云端：未登录时提示并跳转登录页
+    function cloudSave() {
+        if (!cloudReady()) {
+            toast('请先登录后再保存到云端', 'err');
+            setTimeout(function () { location.href = apiUrl('login'); }, 800);
+            return;
+        }
+        if (cloudSaving) return;
+
+        var btn = $('btnCloudSave');
+        cloudSaving = true;
+        if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+
+        cloudPost('api/works/save', {
+            id: cloudId,
+            title: state.work.manifest.name || '未命名作品',
+            data: JSON.stringify(buildExport()),
+            _token: ctx.csrfToken
+        }).then(function (res) {
+            cloudSaving = false;
+            if (btn) { btn.disabled = false; btn.textContent = '保存到云端'; }
+
+            if (!res.ok) {
+                if (res.need_login) {
+                    toast('登录已过期，请重新登录', 'err');
+                    setTimeout(function () { location.href = apiUrl('login'); }, 800);
+                    return;
+                }
+                toast(res.message || '保存失败', 'err');
+                return;
+            }
+
+            cloudId = res.id;
+            $('saveState').className = 'topbar__save is-saved';
+            $('saveState').textContent = '已保存到云端';
+            toast(res.message || '已保存到云端');
+        }).catch(function () {
+            cloudSaving = false;
+            if (btn) { btn.disabled = false; btn.textContent = '保存到云端'; }
+            toast('网络异常，保存失败', 'err');
+        });
+    }
+
+    // 从云端加载指定作品（?work=id）
+    function cloudLoad(id) {
+        if (!cloudReady()) return;
+        fetch(apiUrl('api/works/' + encodeURIComponent(id)), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        }).then(function (res) {
+            return res.json().catch(function () { return { ok: false, message: '作品数据解析失败' }; });
+        }).then(function (res) {
+            if (!res.ok || !res.work || !res.work.data) {
+                toast(res.message || '作品加载失败', 'err');
+                return;
+            }
+            var data = res.work.data;
+            if (!data.manifest || !Array.isArray(data.scenes)) {
+                toast('作品数据格式不正确', 'err');
+                return;
+            }
+            cloudId = res.work.id;
+            applyImported(data);
+            $('workName').value = res.work.title || '';
+            if ($('workDesc')) $('workDesc').value = res.work.description || '';
+            if ($('workTags')) $('workTags').value = res.work.tags || '';
+            $('saveState').className = 'topbar__save is-saved';
+            $('saveState').textContent = '已从云端加载';
+            toast('已加载《' + (res.work.title || '未命名作品') + '》');
+        }).catch(function () {
+            toast('网络异常，加载失败', 'err');
+        });
+    }
+
+    // ============ 自动保存到云端（二期） ============
+    // 仅在已登录且当前作品已存在于云端时启用，避免产生大量无意义的新作品。
+    var AUTO_SAVE_INTERVAL = 60000;   // 60s
+    var autoSaveTimer = null;
+    var autoSaving = false;
+
+    function autoSaveEnabled() {
+        return cloudReady() && cloudId > 0 && !cloudSaving && !autoSaving;
+    }
+
+    // 静默保存：不改变按钮文案，仅在成功时更新保存状态
+    function cloudAutoSave() {
+        if (!autoSaveEnabled()) return;
+        if (!$('saveState').classList.contains('is-dirty')) return;
+
+        autoSaving = true;
+        cloudPost('api/works/save', {
+            id: cloudId,
+            title: state.work.manifest.name || '未命名作品',
+            data: JSON.stringify(buildExport()),
+            _token: ctx.csrfToken
+        }).then(function (res) {
+            autoSaving = false;
+            if (!res.ok) return;
+            cloudId = res.id;
+            $('saveState').className = 'topbar__save is-saved';
+            $('saveState').textContent = '已自动保存 ' + (res.saved_at || '').slice(11, 16);
+        }).catch(function () {
+            autoSaving = false;
+        });
+    }
+
+    function startAutoSave() {
+        if (autoSaveTimer) return;
+        autoSaveTimer = setInterval(cloudAutoSave, AUTO_SAVE_INTERVAL);
+    }
+
+    // ============ 历史版本（二期） ============
+    function openHistory() {
+        if (!cloudReady()) {
+            toast('请先登录后再查看历史版本', 'err');
+            setTimeout(function () { location.href = apiUrl('login'); }, 800);
+            return;
+        }
+        if (cloudId <= 0) {
+            toast('请先保存到云端，之后才会有历史版本', 'err');
+            return;
+        }
+        $('historyModal').hidden = false;
+        renderHistory();
+    }
+
+    function closeHistory() { $('historyModal').hidden = true; }
+
+    function renderHistory() {
+        var list = $('historyList');
+        list.innerHTML = '<li class="history-empty">加载中…</li>';
+
+        fetch(apiUrl('api/works/' + encodeURIComponent(cloudId) + '/revisions'), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        }).then(function (res) {
+            return res.json().catch(function () { return { ok: false, message: '历史版本解析失败' }; });
+        }).then(function (res) {
+            if (!res.ok) {
+                list.innerHTML = '<li class="history-empty">' + escapeHtml(res.message || '加载失败') + '</li>';
+                return;
+            }
+            if (!res.revisions || !res.revisions.length) {
+                list.innerHTML = '<li class="history-empty">暂无历史版本，保存后会自动生成快照。</li>';
+                return;
+            }
+            list.innerHTML = res.revisions.map(function (r) {
+                return '<li class="history-item">' +
+                    '<div class="history-item__info">' +
+                        '<span class="history-item__time">' + escapeHtml(r.created_at) + '</span>' +
+                        '<span class="history-item__remark">' + escapeHtml(r.remark || '快照') + '</span>' +
+                    '</div>' +
+                    '<button class="btn btn--ghost btn--xs js-restore" type="button" ' +
+                        'data-id="' + r.id + '" data-time="' + escapeHtml(r.created_at) + '">恢复</button>' +
+                '</li>';
+            }).join('');
+        }).catch(function () {
+            list.innerHTML = '<li class="history-empty">网络异常，加载失败</li>';
+        });
+    }
+
+    function restoreRevision(btn) {
+        var revisionId = btn.dataset.id;
+        var time = btn.dataset.time || '';
+        if (!window.confirm('确定恢复到 ' + time + ' 的版本吗？当前内容会先自动存为快照。')) return;
+
+        btn.disabled = true;
+        cloudPost('api/works/' + encodeURIComponent(cloudId) + '/revisions/' +
+                  encodeURIComponent(revisionId) + '/restore', {
+            _token: ctx.csrfToken
+        }).then(function (res) {
+            btn.disabled = false;
+            if (!res.ok) { toast(res.message || '恢复失败', 'err'); return; }
+
+            applyImported(res.data);
+            $('workName').value = state.work.manifest.name || '';
+            $('saveState').className = 'topbar__save is-saved';
+            $('saveState').textContent = '已恢复历史版本';
+            closeHistory();
+            toast(res.message || '已恢复');
+        }).catch(function () {
+            btn.disabled = false;
+            toast('网络异常，恢复失败', 'err');
+        });
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
     // ============ 预览 ============
     function preview() {
         var sc = currentScene();
@@ -1895,6 +2388,89 @@
         } catch (e) {
             toast('预览失败：' + e.message, 'err');
         }
+    }
+
+    // ============ 发布 / 分享（三期） ============
+    // 发布前先保存到云端，确保线上内容与编辑器一致；成功后展示短链与嵌入代码。
+    function publish() {
+        if (!cloudReady()) {
+            toast('请先登录后再发布', 'err');
+            setTimeout(function () { location.href = apiUrl('login'); }, 800);
+            return;
+        }
+        if (cloudSaving) return;
+
+        var btn = $('btnPublish');
+        cloudSaving = true;
+        if (btn) { btn.disabled = true; btn.textContent = '发布中…'; }
+
+        cloudPost('api/works/save', {
+            id: cloudId,
+            title: state.work.manifest.name || '未命名作品',
+            description: $('workDesc') ? $('workDesc').value : '',
+            tags: $('workTags') ? $('workTags').value : '',
+            data: JSON.stringify(buildExport()),
+            _token: ctx.csrfToken
+        }).then(function (res) {
+            if (!res.ok) {
+                cloudSaving = false;
+                if (btn) { btn.disabled = false; btn.textContent = '发布'; }
+                if (res.need_login) {
+                    toast('登录已过期，请重新登录', 'err');
+                    setTimeout(function () { location.href = apiUrl('login'); }, 800);
+                    return;
+                }
+                toast(res.message || '发布失败', 'err');
+                return;
+            }
+            cloudId = res.id;
+            return cloudPost('api/works/' + encodeURIComponent(cloudId) + '/publish', {
+                public: 1,
+                _token: ctx.csrfToken
+            });
+        }).then(function (res) {
+            cloudSaving = false;
+            if (btn) { btn.disabled = false; btn.textContent = '发布'; }
+            if (!res) return;
+            if (!res.ok) { toast(res.message || '发布失败', 'err'); return; }
+
+            $('saveState').className = 'topbar__save is-saved';
+            $('saveState').textContent = '已发布';
+            showShare(res.share_url, res.short_code);
+        }).catch(function () {
+            cloudSaving = false;
+            if (btn) { btn.disabled = false; btn.textContent = '发布'; }
+            toast('网络异常，发布失败', 'err');
+        });
+    }
+
+    // 展示分享面板：短链 + iframe 嵌入代码
+    function showShare(shareUrl, shortCode) {
+        if (!shareUrl) { toast('已发布', 'ok'); return; }
+        var embedUrl = apiUrl('embed/' + shortCode);
+        var embedCode = '<iframe src="' + embedUrl + '" width="960" height="540" '
+            + 'frameborder="0" allowfullscreen></iframe>';
+
+        $('shareLink').value = shareUrl;
+        $('shareEmbed').value = embedCode;
+        $('shareModal').hidden = false;
+        toast('作品已发布', 'ok');
+    }
+
+    function closeShare() { $('shareModal').hidden = true; }
+
+    function copyFrom(inputId, okMsg) {
+        var input = $(inputId);
+        if (!input) return;
+        input.select();
+        var done = function () { toast(okMsg, 'ok'); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(input.value).then(done).catch(function () {
+                try { document.execCommand('copy'); done(); } catch (e) { toast('复制失败', 'err'); }
+            });
+            return;
+        }
+        try { document.execCommand('copy'); done(); } catch (e) { toast('复制失败', 'err'); }
     }
 
     // ============ 事件绑定 ============
@@ -1933,6 +2509,17 @@
             this.value = '';
         });
         $('btnExport').addEventListener('click', openExport);
+        $('btnCloudSave').addEventListener('click', cloudSave);
+        $('btnHistory').addEventListener('click', openHistory);
+        $('closeHistory').addEventListener('click', closeHistory);
+        $('btnCloseHistory').addEventListener('click', closeHistory);
+        $('historyModal').addEventListener('click', function (e) {
+            if (e.target === this) closeHistory();
+        });
+        $('historyList').addEventListener('click', function (e) {
+            var btn = e.target.closest('.js-restore');
+            if (btn) restoreRevision(btn);
+        });
         // 导出格式切换（JSON / TXT）
         $('exportTabs').addEventListener('click', function (e) {
             var t = e.target.closest('[data-format]');
@@ -1941,6 +2528,20 @@
             renderExportArea();
         });
         $('btnPreview').addEventListener('click', preview);
+        $('btnPublish').addEventListener('click', publish);
+        $('closeShare').addEventListener('click', closeShare);
+        $('btnCloseShare').addEventListener('click', closeShare);
+        $('btnCopyShare').addEventListener('click', function () { copyFrom('shareLink', '短链已复制'); });
+        $('btnCopyEmbed').addEventListener('click', function () { copyFrom('shareEmbed', '嵌入代码已复制'); });
+        $('shareModal').addEventListener('click', function (e) {
+            if (e.target === this) closeShare();
+        });
+        $('btnTheme').addEventListener('click', function () {
+            if (!window.DramatoolTheme) return;
+            window.DramatoolTheme.cycle();
+            var names = { dark: '深色', light: '浅色', sepia: '护眼', auto: '跟随系统' };
+            toast('主题：' + (names[window.DramatoolTheme.get()] || ''));
+        });
         $('closeModal').addEventListener('click', closeExport);
         $('btnCopyJson').addEventListener('click', copyJson);
         $('btnDownload').addEventListener('click', downloadJson);
@@ -1964,6 +2565,26 @@
                 c.classList.toggle('is-active', c === t);
             });
             renderAssetGrid();
+        });
+
+        // 素材来源切换（内置 / 我的）
+        $('assetSourceTabs').addEventListener('click', function (e) {
+            var t = e.target.closest('.tab');
+            if (!t) return;
+            state.assetSource = t.dataset.source;
+            state.spriteCharacter = null;
+            syncAssetSourceTabs();
+            renderAssetGrid();
+        });
+
+        // 上传素材
+        $('btnUploadAsset').addEventListener('click', openUpload);
+        $('closeUpload').addEventListener('click', closeUpload);
+        $('btnCancelUpload').addEventListener('click', closeUpload);
+        $('btnDoUpload').addEventListener('click', doUpload);
+        $('uploadType').addEventListener('change', updateUploadHint);
+        $('uploadModal').addEventListener('click', function (e) {
+            if (e.target === this) closeUpload();
         });
 
         // 素材库视图切换（网格 / 列表）
@@ -2003,8 +2624,11 @@
             addNode(chip.dataset.insert);
         });
 
-        // 失焦自动保存
-        window.addEventListener('blur', saveDraft);
+        // 失焦自动保存（本地草稿 + 云端同步）
+        window.addEventListener('blur', function () {
+            saveDraft();
+            cloudAutoSave();
+        });
         // 离开提示
         window.addEventListener('beforeunload', function (e) {
             if ($('saveState').classList.contains('is-dirty')) {
@@ -2050,11 +2674,18 @@
 
         bindEvents();
         bindNodeDrop();
+        startAutoSave();
         // 加载素材后渲染
         loadAssets(function () {
             renderAll();
             saveDraft();
             resetHistory();
+
+            // 带 ?work=id 进入时从云端加载该作品（覆盖本地草稿）
+            var m = /[?&]work=(\d+)/.exec(location.search);
+            if (m && cloudReady()) {
+                cloudLoad(m[1]);
+            }
         });
     }
 
@@ -2065,7 +2696,7 @@
     }
 
     // 暴露给立绘裁剪弹窗（sprite-crop.js）调用
-    window.AshaEditor = {
+    window.DramatoolEditor = {
         getAsset: function (type, id) { return findAsset(type, id); },
         getTransform: function (assetId) {
             return (state.work.manifest.spriteTransforms || {})[assetId] || null;

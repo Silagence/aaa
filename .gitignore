@@ -39,3 +39,15 @@ config/local.php
 public/assets/bg/
 public/assets/bgm/
 public/assets/sprites/
+
+# 运行时存储
+storage/sessions/
+storage/uploads/
+storage/logs/
+storage/cache/
+
+# 调试/临时测试文件
+tools/_dbg*.php
+tools/_tmp_*.ps1
+tools/_tmp_*.php
+tools/_tmp_regex.php
