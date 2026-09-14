@@ -63,9 +63,9 @@
         <nav class="hero__links">
             <a href="<?= e(base_url('square')) ?>" class="link">作品广场</a>
             <span class="dot">·</span>
-            <a href="#" class="link is-disabled" aria-disabled="true" title="即将上线">使用文档</a>
+            <a href="<?= e(base_url('manual')) ?>" class="link">使用手册</a>
             <span class="dot">·</span>
-            <a href="#" class="link is-disabled" aria-disabled="true" title="即将上线">关于项目</a>
+            <a href="<?= e(base_url('about')) ?>" class="link">关于网站</a>
         </nav>
     </main>
 

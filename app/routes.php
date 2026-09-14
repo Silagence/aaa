@@ -21,6 +21,10 @@ $router->get('editor.php', 'EditorController@index');
 $router->get('player', 'PlayerController@index');
 $router->get('player.php', 'PlayerController@index');
 
+// ===== 静态内容页 =====
+$router->get('manual', 'PageController@manual');
+$router->get('about', 'PageController@about');
+
 // ===== 认证 =====
 $router->get('login', 'AuthController@showLogin');
 $router->post('login', 'AuthController@login');
