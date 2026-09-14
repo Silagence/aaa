@@ -116,4 +116,138 @@
             toast('网络异常，操作失败');
         });
     });
+
+    // ===== 公告管理 =====
+    var annModal = document.getElementById('annModal');
+    var annForm = document.getElementById('annForm');
+
+    function openAnnModal(data) {
+        if (!annModal || !annForm) return;
+        annForm.reset();
+        annForm.elements.id.value = data.id || '';
+        annForm.elements.title.value = data.title || '';
+        annForm.elements.content.value = data.content || '';
+        annForm.elements.pinned.checked = data.pinned === '1';
+        annForm.elements.status.checked = data.status !== '0';
+        document.getElementById('annModalTitle').textContent = data.id ? '编辑公告' : '发布公告';
+        annModal.hidden = false;
+    }
+
+    function closeAnnModal() {
+        if (annModal) annModal.hidden = true;
+    }
+
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('.js-ann-new')) {
+            openAnnModal({});
+            return;
+        }
+        if (e.target.closest('.js-ann-cancel')) {
+            closeAnnModal();
+            return;
+        }
+
+        var editBtn = e.target.closest('.js-ann-edit');
+        if (editBtn) {
+            openAnnModal({
+                id: editBtn.getAttribute('data-id'),
+                title: editBtn.getAttribute('data-title'),
+                content: editBtn.getAttribute('data-content'),
+                status: editBtn.getAttribute('data-status'),
+                pinned: editBtn.getAttribute('data-pinned')
+            });
+            return;
+        }
+
+        var toggleBtn = e.target.closest('.js-ann-toggle');
+        if (toggleBtn) {
+            var confirmText = toggleBtn.getAttribute('data-confirm');
+            if (confirmText && !window.confirm(confirmText)) return;
+            toggleBtn.disabled = true;
+            post('/admin/announcements/' + toggleBtn.getAttribute('data-id') + '/toggle', {
+                status: toggleBtn.getAttribute('data-status')
+            }).then(function (res) {
+                if (!res.ok) {
+                    toggleBtn.disabled = false;
+                    toast(res.message || '操作失败');
+                    return;
+                }
+                toast(res.message || '操作成功', 'ok');
+                setTimeout(function () { location.reload(); }, 600);
+            }).catch(function () {
+                toggleBtn.disabled = false;
+                toast('网络异常，操作失败');
+            });
+            return;
+        }
+
+        var pinBtn = e.target.closest('.js-ann-pin');
+        if (pinBtn) {
+            pinBtn.disabled = true;
+            post('/admin/announcements/' + pinBtn.getAttribute('data-id') + '/pin', {
+                pinned: pinBtn.getAttribute('data-pinned')
+            }).then(function (res) {
+                if (!res.ok) {
+                    pinBtn.disabled = false;
+                    toast(res.message || '操作失败');
+                    return;
+                }
+                toast(res.message || '操作成功', 'ok');
+                setTimeout(function () { location.reload(); }, 600);
+            }).catch(function () {
+                pinBtn.disabled = false;
+                toast('网络异常，操作失败');
+            });
+            return;
+        }
+
+        var delBtn = e.target.closest('.js-ann-delete');
+        if (delBtn) {
+            var delConfirm = delBtn.getAttribute('data-confirm');
+            if (delConfirm && !window.confirm(delConfirm)) return;
+            delBtn.disabled = true;
+            post('/admin/announcements/' + delBtn.getAttribute('data-id') + '/delete', {})
+                .then(function (res) {
+                    if (!res.ok) {
+                        delBtn.disabled = false;
+                        toast(res.message || '操作失败');
+                        return;
+                    }
+                    toast(res.message || '已删除', 'ok');
+                    setTimeout(function () { location.reload(); }, 600);
+                }).catch(function () {
+                    delBtn.disabled = false;
+                    toast('网络异常，操作失败');
+                });
+        }
+    });
+
+    if (annForm) {
+        annForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var submitBtn = document.getElementById('annSubmit');
+            var id = annForm.elements.id.value;
+            var payload = {
+                title: annForm.elements.title.value,
+                content: annForm.elements.content.value,
+                pinned: annForm.elements.pinned.checked ? '1' : '0',
+                status: annForm.elements.status.checked ? '1' : '0'
+            };
+            var url = id ? '/admin/announcements/' + id + '/update' : '/admin/announcements';
+
+            submitBtn.disabled = true;
+            post(url, payload).then(function (res) {
+                if (!res.ok) {
+                    submitBtn.disabled = false;
+                    toast(res.message || '保存失败');
+                    return;
+                }
+                toast(res.message || '已保存', 'ok');
+                setTimeout(function () { location.reload(); }, 600);
+            }).catch(function () {
+                submitBtn.disabled = false;
+                toast('网络异常，保存失败');
+            });
+        });
+    }
 })();

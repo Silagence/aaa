@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `bio`           VARCHAR(255)    NOT NULL DEFAULT '' COMMENT 'short bio',
   `role`          VARCHAR(20)     NOT NULL DEFAULT 'user' COMMENT 'role: user / admin',
   `status`        TINYINT         NOT NULL DEFAULT 1 COMMENT 'status: 1 active / 0 disabled',
+  `email_verified_at` DATETIME    NULL DEFAULT NULL COMMENT 'email verified time, NULL = unverified',
   `login_fail`    INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT 'consecutive login failures',
   `locked_until`  DATETIME        NULL DEFAULT NULL COMMENT 'lock expiry time',
   `last_login_at` DATETIME        NULL DEFAULT NULL COMMENT 'last login time',
@@ -134,6 +135,22 @@ CREATE TABLE IF NOT EXISTS `reports` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='content reports';
 
 -- ---------------------------------------------------------------------------
+-- announcements (site announcements published by admins)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `announcements` (
+  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `title`      VARCHAR(120)    NOT NULL COMMENT 'announcement title',
+  `content`    TEXT            NOT NULL COMMENT 'announcement body (plain text)',
+  `status`     TINYINT         NOT NULL DEFAULT 1 COMMENT 'status: 1 published / 0 draft',
+  `pinned`     TINYINT         NOT NULL DEFAULT 0 COMMENT 'pinned: 1 yes / 0 no',
+  `admin_id`   BIGINT UNSIGNED NOT NULL COMMENT 'publisher admin user id',
+  `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_announcements_status` (`status`, `pinned`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='site announcements';
+
+-- ---------------------------------------------------------------------------
 -- work_assets (phase 2: user uploaded assets)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `work_assets` (
@@ -142,6 +159,7 @@ CREATE TABLE IF NOT EXISTS `work_assets` (
   `type`        VARCHAR(10)     NOT NULL COMMENT 'asset type: bg / sprite / bgm / sfx',
   `name`        VARCHAR(120)    NOT NULL DEFAULT '' COMMENT 'display name (original filename)',
   `path`        VARCHAR(255)    NOT NULL COMMENT 'relative path under storage/uploads',
+  `thumb`       VARCHAR(255)    NOT NULL DEFAULT '' COMMENT 'relative path of generated thumbnail (empty = use path)',
   `mime`        VARCHAR(80)     NOT NULL DEFAULT '' COMMENT 'detected mime type',
   `size`        INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT 'file size in bytes',
   `width`       INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT 'image width',
@@ -204,3 +222,22 @@ CREATE TABLE IF NOT EXISTS `password_resets` (
   KEY `idx_password_resets_user` (`user_id`, `created_at`),
   KEY `idx_password_resets_ip` (`ip`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='password reset tokens';
+
+-- ---------------------------------------------------------------------------
+-- email_verifications (email verification tokens, single-use + short-lived)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `email_verifications` (
+  `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`     BIGINT UNSIGNED NOT NULL COMMENT 'target user id',
+  `email`       VARCHAR(190)    NOT NULL COMMENT 'email being verified (snapshot at issue time)',
+  `token_hash`  CHAR(64)        NOT NULL COMMENT 'sha256 of verification token sent by email',
+  `ip`          VARCHAR(45)     NOT NULL DEFAULT '' COMMENT 'request ip (also used for ip throttle)',
+  `user_agent`  VARCHAR(255)    NOT NULL DEFAULT '' COMMENT 'request user agent',
+  `expires_at`  DATETIME        NOT NULL COMMENT 'expiry time',
+  `used_at`     DATETIME        NULL DEFAULT NULL COMMENT 'consumed time, NULL = pending',
+  `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_email_verifications_token` (`token_hash`),
+  KEY `idx_email_verifications_user` (`user_id`, `created_at`),
+  KEY `idx_email_verifications_ip` (`ip`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='email verification tokens';

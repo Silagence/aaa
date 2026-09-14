@@ -30,6 +30,7 @@ require __DIR__ . '/../partials/app_head.php';
     </a>
     <a class="admin-tabs__item" href="<?= e(base_url('admin/works')) ?>">作品管理</a>
     <a class="admin-tabs__item" href="<?= e(base_url('admin/users')) ?>">用户管理</a>
+    <a class="admin-tabs__item" href="<?= e(base_url('admin/announcements')) ?>">公告管理</a>
 </div>
 
 <div class="stat-grid">
@@ -57,6 +58,10 @@ require __DIR__ . '/../partials/app_head.php';
         <span class="stat-card__label">作品总数</span>
         <span class="stat-card__value"><?= (int) $stats['works'] ?></span>
         <span class="stat-card__hint">已发布 <?= (int) $stats['works_public'] ?></span>
+    </a>
+    <a class="stat-card" href="<?= e(base_url('admin/announcements')) ?>">
+        <span class="stat-card__label">已发布公告</span>
+        <span class="stat-card__value"><?= (int) $stats['announcements'] ?></span>
     </a>
 </div>
 

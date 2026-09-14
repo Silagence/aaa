@@ -32,6 +32,10 @@ $router->post('password/forgot', 'AuthController@forgot');
 $router->get('password/reset', 'AuthController@showReset');
 $router->post('password/reset', 'AuthController@reset');
 
+// 邮箱验证
+$router->get('email/verify', 'AuthController@verifyEmail');
+$router->post('email/resend', 'AuthController@resendVerification');
+
 // ===== 个人中心 =====
 $router->get('profile', 'ProfileController@index');
 $router->post('profile', 'ProfileController@update');
@@ -75,6 +79,17 @@ $router->get('admin/works', 'AdminController@works');
 $router->post('admin/works/{id}/unpublish', 'AdminController@unpublishWork');
 $router->get('admin/users', 'AdminController@users');
 $router->post('admin/users/{id}/toggle', 'AdminController@toggleUser');
+
+// 公告管理
+$router->get('admin/announcements', 'AdminController@announcements');
+$router->post('admin/announcements', 'AdminController@storeAnnouncement');
+$router->post('admin/announcements/{id}/update', 'AdminController@updateAnnouncement');
+$router->post('admin/announcements/{id}/toggle', 'AdminController@toggleAnnouncement');
+$router->post('admin/announcements/{id}/pin', 'AdminController@pinAnnouncement');
+$router->post('admin/announcements/{id}/delete', 'AdminController@deleteAnnouncement');
+
+// ===== 公告（登录用户可见）=====
+$router->get('announcements', 'AnnouncementController@index');
 
 // ===== 用户素材（上传 / 列表 / 删除 / 元信息）=====
 $router->get('api/assets', 'AssetController@index');

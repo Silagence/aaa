@@ -45,6 +45,7 @@ $buildUrl = static function (array $override) use ($filters): string {
     <a class="admin-tabs__item" href="<?= e(base_url('admin/reports')) ?>">举报处理</a>
     <a class="admin-tabs__item is-active" href="<?= e(base_url('admin/works')) ?>">作品管理</a>
     <a class="admin-tabs__item" href="<?= e(base_url('admin/users')) ?>">用户管理</a>
+    <a class="admin-tabs__item" href="<?= e(base_url('admin/announcements')) ?>">公告管理</a>
 </div>
 
 <form class="filter-bar" method="get" action="<?= e(base_url('admin/works')) ?>">

@@ -12,6 +12,7 @@ namespace App\Controllers;
 
 use App\Core\Controller;
 use App\Core\Session;
+use App\Models\Announcement;
 use App\Models\Comment;
 use App\Models\Report;
 use App\Models\User;
@@ -43,6 +44,7 @@ class AdminController extends Controller
                 'users_disabled' => User::countAll(0),
                 'works'          => Work::countAll(),
                 'works_public'   => Work::countAll(true),
+                'announcements'  => Announcement::countByStatus(Announcement::STATUS_PUBLISHED),
             ],
             'latest'  => Report::paginateForAdmin(['status' => Report::STATUS_PENDING], 1, 5)['items'],
         ]);
@@ -250,6 +252,204 @@ class AdminController extends Controller
             'message' => $status === 1 ? '账号已启用' : '账号已禁用',
             'status'  => $status,
         ]);
+    }
+
+    /**
+     * 公告管理列表页
+     */
+    public function announcements(): void
+    {
+        if ($this->requireAdmin() === null) {
+            return;
+        }
+
+        $keyword = (string) $this->query('keyword', '');
+        $status = $this->query('status', '');
+
+        $pager = Announcement::paginateForAdmin(
+            ['keyword' => $keyword, 'status' => $status === '' ? null : (int) $status],
+            max(1, (int) $this->query('page', 1)),
+            self::PER_PAGE
+        );
+
+        $this->view('admin/announcements', [
+            'user'          => Auth::user(),
+            'flash'         => Session::takeFlash(),
+            'announcements' => $pager['items'],
+            'pager'         => $pager,
+            'filters'       => ['keyword' => $keyword, 'status' => $status],
+            'counts'        => [
+                'all'       => Announcement::paginateForAdmin([], 1, 1)['total'],
+                'published' => Announcement::countByStatus(Announcement::STATUS_PUBLISHED),
+                'draft'     => Announcement::countByStatus(Announcement::STATUS_DRAFT),
+            ],
+        ]);
+    }
+
+    /**
+     * 新建公告
+     */
+    public function storeAnnouncement(): void
+    {
+        $adminId = $this->requireAdmin();
+        if ($adminId === null) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $title = (string) $this->input('title', '');
+        $content = (string) $this->input('content', '');
+
+        $error = $this->validateAnnouncement($title, $content);
+        if ($error !== null) {
+            $this->json(['ok' => false, 'message' => $error], 422);
+            return;
+        }
+
+        $id = Announcement::create([
+            'title'    => $title,
+            'content'  => $content,
+            'status'   => (int) $this->input('status', Announcement::STATUS_PUBLISHED) === Announcement::STATUS_DRAFT
+                ? Announcement::STATUS_DRAFT
+                : Announcement::STATUS_PUBLISHED,
+            'pinned'   => (int) $this->input('pinned', 0) === 1 ? 1 : 0,
+            'admin_id' => $adminId,
+        ]);
+
+        $this->json(['ok' => true, 'message' => '公告已发布', 'id' => $id]);
+    }
+
+    /**
+     * 更新公告
+     */
+    public function updateAnnouncement(string $id): void
+    {
+        if ($this->requireAdmin() === null) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $announcementId = (int) $id;
+        if (Announcement::find($announcementId) === null) {
+            $this->json(['ok' => false, 'message' => '公告不存在'], 404);
+            return;
+        }
+
+        $title = (string) $this->input('title', '');
+        $content = (string) $this->input('content', '');
+
+        $error = $this->validateAnnouncement($title, $content);
+        if ($error !== null) {
+            $this->json(['ok' => false, 'message' => $error], 422);
+            return;
+        }
+
+        Announcement::updateById($announcementId, [
+            'title'   => $title,
+            'content' => $content,
+            'status'  => (int) $this->input('status', Announcement::STATUS_PUBLISHED) === Announcement::STATUS_DRAFT
+                ? Announcement::STATUS_DRAFT
+                : Announcement::STATUS_PUBLISHED,
+            'pinned'  => (int) $this->input('pinned', 0) === 1 ? 1 : 0,
+        ]);
+
+        $this->json(['ok' => true, 'message' => '公告已更新']);
+    }
+
+    /**
+     * 发布 / 撤回公告
+     */
+    public function toggleAnnouncement(string $id): void
+    {
+        if ($this->requireAdmin() === null) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $announcementId = (int) $id;
+        if (Announcement::find($announcementId) === null) {
+            $this->json(['ok' => false, 'message' => '公告不存在'], 404);
+            return;
+        }
+
+        $status = (int) $this->input('status', Announcement::STATUS_PUBLISHED) === Announcement::STATUS_DRAFT
+            ? Announcement::STATUS_DRAFT
+            : Announcement::STATUS_PUBLISHED;
+        Announcement::setStatus($announcementId, $status);
+
+        $this->json([
+            'ok'      => true,
+            'message' => $status === Announcement::STATUS_PUBLISHED ? '公告已发布' : '公告已撤回为草稿',
+            'status'  => $status,
+        ]);
+    }
+
+    /**
+     * 置顶 / 取消置顶公告
+     */
+    public function pinAnnouncement(string $id): void
+    {
+        if ($this->requireAdmin() === null) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $announcementId = (int) $id;
+        if (Announcement::find($announcementId) === null) {
+            $this->json(['ok' => false, 'message' => '公告不存在'], 404);
+            return;
+        }
+
+        $pinned = (int) $this->input('pinned', 0) === 1 ? 1 : 0;
+        Announcement::setPinned($announcementId, $pinned);
+
+        $this->json([
+            'ok'      => true,
+            'message' => $pinned === 1 ? '公告已置顶' : '已取消置顶',
+            'pinned'  => $pinned,
+        ]);
+    }
+
+    /**
+     * 删除公告
+     */
+    public function deleteAnnouncement(string $id): void
+    {
+        if ($this->requireAdmin() === null) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $announcementId = (int) $id;
+        if (Announcement::find($announcementId) === null) {
+            $this->json(['ok' => false, 'message' => '公告不存在'], 404);
+            return;
+        }
+
+        Announcement::deleteById($announcementId);
+        $this->json(['ok' => true, 'message' => '公告已删除']);
+    }
+
+    /**
+     * 校验公告标题与正文
+     *
+     * @return string|null 错误信息，通过校验时返回 null
+     */
+    private function validateAnnouncement(string $title, string $content): ?string
+    {
+        if ($title === '') {
+            return '请填写公告标题';
+        }
+        if (mb_strlen($title) > Announcement::MAX_TITLE_LENGTH) {
+            return '公告标题不能超过 ' . Announcement::MAX_TITLE_LENGTH . ' 个字符';
+        }
+        if ($content === '') {
+            return '请填写公告内容';
+        }
+        if (mb_strlen($content) > Announcement::MAX_CONTENT_LENGTH) {
+            return '公告内容不能超过 ' . Announcement::MAX_CONTENT_LENGTH . ' 个字符';
+        }
+        return null;
     }
 
     /**

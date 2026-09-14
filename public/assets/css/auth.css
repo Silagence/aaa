@@ -551,6 +551,26 @@
     color: var(--text-muted);
 }
 
+/* 邮箱验证状态 */
+.verify-state {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.verify-state--ok {
+    color: var(--success);
+}
+
+.verify-state--pending {
+    color: var(--danger);
+}
+
+.verify-state__time {
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
 .link--danger {
     padding: 0;
     border: 0;
@@ -1491,8 +1511,79 @@
     color: var(--success);
 }
 
+/* 公告卡片 */
+.announcement-card__title {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.announcement-card__content {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-soft);
+    word-break: break-word;
+}
+
+.announcement-form__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+}
+
+/* 公告列表（普通用户） */
+.announcement-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.announcement-item {
+    padding: 20px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+}
+
+.announcement-item--pinned {
+    border-color: var(--accent-line);
+    background: var(--accent-soft);
+}
+
+.announcement-item__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.announcement-item__title {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.announcement-item__time {
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.announcement-item__content {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--text-soft);
+    word-break: break-word;
+}
+
 @media (max-width: 720px) {
     .filter-bar { flex-direction: column; align-items: stretch; }
     .field__input--inline { width: 100%; min-width: 0; }
     .report-card__head { flex-direction: column; align-items: flex-start; }
+    .announcement-item__head { flex-direction: column; align-items: flex-start; }
 }

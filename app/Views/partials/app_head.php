@@ -61,6 +61,8 @@ $ogUrl = $ogUrl ?? '';
                    href="<?= e(base_url('square')) ?>">作品广场</a>
                 <a class="appbar__link<?= $active === 'favorites' ? ' is-active' : '' ?>"
                    href="<?= e(base_url('favorites')) ?>">我的收藏</a>
+                <a class="appbar__link<?= $active === 'announcements' ? ' is-active' : '' ?>"
+                   href="<?= e(base_url('announcements')) ?>">公告</a>
                 <a class="appbar__link<?= $active === 'profile' ? ' is-active' : '' ?>"
                    href="<?= e(base_url('profile')) ?>">个人中心</a>
 <?php if ($user !== null && ($user['role'] ?? '') === 'admin'): ?>
