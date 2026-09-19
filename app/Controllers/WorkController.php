@@ -12,6 +12,7 @@ namespace App\Controllers;
 use App\Core\Controller;
 use App\Core\DB;
 use App\Core\Session;
+use App\Core\Tenant;
 use App\Models\Comment;
 use App\Models\Favorite;
 use App\Models\Like;
@@ -890,14 +891,14 @@ class WorkController extends Controller
     }
 
     /**
-     * 评论限频：同一用户 60 秒内最多 5 条
+     * 评论限频：同一用户 60 秒内最多 5 条（仅当前站点）
      */
     private function allowComment(int $userId): bool
     {
         $count = (int) DB::value(
             'SELECT COUNT(*) FROM `comments`
-             WHERE user_id = ? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)',
-            [$userId]
+             WHERE site = ? AND user_id = ? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)',
+            [Tenant::current(), $userId]
         );
         return $count < 5;
     }

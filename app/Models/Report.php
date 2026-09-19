@@ -4,6 +4,9 @@
  *
  * 同一用户对同一对象只能举报一次（唯一索引保证），
  * 重复举报时更新原因与补充说明，便于用户修正描述。
+ *
+ * 多租户：举报记录带 site 字段，admin 查询时按 site 过滤，
+ * 跨表 JOIN works/comments 也使用 `w.site = r.site` 避免跨站点串联。
  */
 
 declare(strict_types=1);
@@ -12,12 +15,16 @@ namespace App\Models;
 
 use App\Core\DB;
 use App\Core\Model;
+use App\Core\Tenant;
+use App\Core\TenantScoped;
 
 class Report extends Model
 {
+    use TenantScoped;
+
     protected static string $table = 'reports';
 
-    protected static array $fillable = ['target_type', 'target_id', 'user_id', 'reason', 'detail', 'status'];
+    protected static array $fillable = ['site', 'target_type', 'target_id', 'user_id', 'reason', 'detail', 'status'];
 
     /** 举报对象类型 */
     public const TARGET_WORK = 'work';
@@ -94,14 +101,14 @@ class Report extends Model
     }
 
     /**
-     * 是否已举报过
+     * 是否已举报过（仅查当前站点）
      */
     public static function existsBy(string $targetType, int $targetId, int $userId): bool
     {
         return (int) DB::value(
             'SELECT COUNT(*) FROM `reports`
-             WHERE target_type = ? AND target_id = ? AND user_id = ?',
-            [$targetType, $targetId, $userId]
+             WHERE site = ? AND target_type = ? AND target_id = ? AND user_id = ?',
+            [Tenant::current(), $targetType, $targetId, $userId]
         ) > 0;
     }
 
@@ -115,16 +122,16 @@ class Report extends Model
         if (self::existsBy($targetType, $targetId, $userId)) {
             DB::execute(
                 'UPDATE `reports` SET reason = ?, detail = ?, status = 0
-                 WHERE target_type = ? AND target_id = ? AND user_id = ?',
-                [$reason, $detail, $targetType, $targetId, $userId]
+                 WHERE site = ? AND target_type = ? AND target_id = ? AND user_id = ?',
+                [$reason, $detail, Tenant::current(), $targetType, $targetId, $userId]
             );
             return false;
         }
 
         DB::execute(
-            'INSERT INTO `reports` (`target_type`, `target_id`, `user_id`, `reason`, `detail`, `status`)
-             VALUES (?, ?, ?, ?, ?, 0)',
-            [$targetType, $targetId, $userId, $reason, $detail]
+            'INSERT INTO `reports` (`site`, `target_type`, `target_id`, `user_id`, `reason`, `detail`, `status`)
+             VALUES (?, ?, ?, ?, ?, ?, 0)',
+            [Tenant::current(), $targetType, $targetId, $userId, $reason, $detail]
         );
         return true;
     }
@@ -134,6 +141,7 @@ class Report extends Model
      *
      * 作品举报带出作品标题与短链，评论举报带出评论正文与所属作品，
      * 两者都带出举报人昵称/邮箱，便于管理员判断。
+     * 跨表 JOIN 全部按 site 过滤，避免跨站点串联。
      *
      * @param array{status?: int|null, target_type?: string} $filters
      * @return array{items: array, total: int, page: int, perPage: int, pages: int}
@@ -142,8 +150,8 @@ class Report extends Model
     {
         $perPage = max(1, min(100, $perPage));
 
-        $where = [];
-        $params = [];
+        $where = ['r.site = ?'];
+        $params = [Tenant::current()];
 
         $status = $filters['status'] ?? null;
         if ($status !== null && $status !== '') {
@@ -172,9 +180,9 @@ class Report extends Model
                     cw.title AS comment_work_title, cw.short_code AS comment_work_short_code
              FROM `reports` r
              LEFT JOIN `users` u ON u.id = r.user_id
-             LEFT JOIN `works` w ON r.target_type = \'work\' AND w.id = r.target_id
-             LEFT JOIN `comments` c ON r.target_type = \'comment\' AND c.id = r.target_id
-             LEFT JOIN `works` cw ON cw.id = c.work_id
+             LEFT JOIN `works` w ON r.target_type = \'work\' AND w.id = r.target_id AND w.site = r.site
+             LEFT JOIN `comments` c ON r.target_type = \'comment\' AND c.id = r.target_id AND c.site = r.site
+             LEFT JOIN `works` cw ON cw.id = c.work_id AND cw.site = c.site
              ' . $clause . '
              ORDER BY r.status ASC, r.id DESC
              LIMIT ' . $perPage . ' OFFSET ' . $offset,
@@ -203,12 +211,12 @@ class Report extends Model
                     cw.title AS comment_work_title, cw.short_code AS comment_work_short_code
              FROM `reports` r
              LEFT JOIN `users` u ON u.id = r.user_id
-             LEFT JOIN `works` w ON r.target_type = \'work\' AND w.id = r.target_id
-             LEFT JOIN `comments` c ON r.target_type = \'comment\' AND c.id = r.target_id
-             LEFT JOIN `works` cw ON cw.id = c.work_id
-             WHERE r.id = ?
+             LEFT JOIN `works` w ON r.target_type = \'work\' AND w.id = r.target_id AND w.site = r.site
+             LEFT JOIN `comments` c ON r.target_type = \'comment\' AND c.id = r.target_id AND c.site = r.site
+             LEFT JOIN `works` cw ON cw.id = c.work_id AND cw.site = c.site
+             WHERE r.site = ? AND r.id = ?
              LIMIT 1',
-            [$id]
+            [Tenant::current(), $id]
         );
     }
 
@@ -217,15 +225,21 @@ class Report extends Model
      */
     public static function setStatus(int $id, int $status): int
     {
-        return DB::execute('UPDATE `reports` SET status = ? WHERE id = ?', [$status, $id]);
+        return DB::execute(
+            'UPDATE `reports` SET status = ? WHERE site = ? AND id = ?',
+            [$status, Tenant::current(), $id]
+        );
     }
 
     /**
-     * 按状态统计举报数量
+     * 按状态统计举报数量（仅当前站点）
      */
     public static function countByStatus(int $status): int
     {
-        return (int) DB::value('SELECT COUNT(*) FROM `reports` WHERE status = ?', [$status]);
+        return (int) DB::value(
+            'SELECT COUNT(*) FROM `reports` WHERE site = ? AND status = ?',
+            [Tenant::current(), $status]
+        );
     }
 
     /**
@@ -234,8 +248,8 @@ class Report extends Model
     public static function countByTarget(string $targetType, int $targetId): int
     {
         return (int) DB::value(
-            'SELECT COUNT(*) FROM `reports` WHERE target_type = ? AND target_id = ?',
-            [$targetType, $targetId]
+            'SELECT COUNT(*) FROM `reports` WHERE site = ? AND target_type = ? AND target_id = ?',
+            [Tenant::current(), $targetType, $targetId]
         );
     }
 }

@@ -2,6 +2,14 @@
 -- Target database: dramatool
 -- MySQL 5.7 compatible (no CTE / window functions / utf8mb4_0900_ai_ci)
 --
+-- 多租户说明：
+--   隔离表（works / work_revisions / work_assets / likes / comments /
+--   favorites / reports / announcements）均含 `site` 字段（VARCHAR(32)），
+--   用于支持同一数据库承载多个分支部署，每条数据归属一个站点。
+--   共享表（users / sessions / password_resets / email_verifications /
+--   register_attempts）不带 site，账号在所有站点通用。
+--   每个部署在 config/local.php 中配置 `app.site`，例如 'main' / 'asha'。
+--
 -- Usage:
 --   mysql -u root -p dramatool < sql/schema.sql
 --   or from project root: php tools/migrate.php
@@ -10,7 +18,7 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ---------------------------------------------------------------------------
--- users
+-- users（共享表：账号在所有站点通用，不加 site）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `users` (
   `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -35,10 +43,11 @@ CREATE TABLE IF NOT EXISTS `users` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='users';
 
 -- ---------------------------------------------------------------------------
--- works
+-- works（隔离表）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `works` (
   `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `site`          VARCHAR(32)     NOT NULL DEFAULT '' COMMENT 'tenant site id, e.g. main / asha',
   `user_id`       BIGINT UNSIGNED NOT NULL COMMENT 'owner user id',
   `title`         VARCHAR(120)    NOT NULL DEFAULT 'untitled' COMMENT 'work title',
   `description`   VARCHAR(500)    NOT NULL DEFAULT '' COMMENT 'work description',
@@ -55,45 +64,48 @@ CREATE TABLE IF NOT EXISTS `works` (
   `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_works_short_code` (`short_code`),
-  KEY `idx_works_user_status` (`user_id`, `status`),
-  KEY `idx_works_updated` (`updated_at`),
-  KEY `idx_works_public_updated` (`is_public`, `status`, `updated_at`),
-  KEY `idx_works_public_play` (`is_public`, `status`, `play_count`)
+  UNIQUE KEY `uk_works_site_short_code` (`site`, `short_code`),
+  KEY `idx_works_site_user_status` (`site`, `user_id`, `status`),
+  KEY `idx_works_site_updated` (`site`, `updated_at`),
+  KEY `idx_works_site_public_updated` (`site`, `is_public`, `status`, `updated_at`),
+  KEY `idx_works_site_public_play` (`site`, `is_public`, `status`, `play_count`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='works';
 
 -- ---------------------------------------------------------------------------
--- work_revisions (reserved for phase 2)
+-- work_revisions（隔离表）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `work_revisions` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `site`       VARCHAR(32)     NOT NULL DEFAULT '' COMMENT 'tenant site id',
   `work_id`    BIGINT UNSIGNED NOT NULL COMMENT 'work id',
   `user_id`    BIGINT UNSIGNED NOT NULL COMMENT 'operator user id',
   `data`       LONGTEXT        NULL COMMENT 'full JSON snapshot of this revision',
   `remark`     VARCHAR(120)    NOT NULL DEFAULT '' COMMENT 'revision remark',
   `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_revisions_work` (`work_id`, `created_at`)
+  KEY `idx_revisions_site_work` (`site`, `work_id`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='work revisions';
 
 -- ---------------------------------------------------------------------------
--- likes (phase 3)
+-- likes（隔离表）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `likes` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `site`       VARCHAR(32)     NOT NULL DEFAULT '' COMMENT 'tenant site id',
   `work_id`    BIGINT UNSIGNED NOT NULL COMMENT 'liked work id',
   `user_id`    BIGINT UNSIGNED NOT NULL COMMENT 'user who liked',
   `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_likes_work_user` (`work_id`, `user_id`),
-  KEY `idx_likes_user` (`user_id`)
+  UNIQUE KEY `uk_likes_site_work_user` (`site`, `work_id`, `user_id`),
+  KEY `idx_likes_site_user` (`site`, `user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='work likes';
 
 -- ---------------------------------------------------------------------------
--- comments (phase 3)
+-- comments（隔离表）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `comments` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `site`       VARCHAR(32)     NOT NULL DEFAULT '' COMMENT 'tenant site id',
   `work_id`    BIGINT UNSIGNED NOT NULL COMMENT 'commented work id',
   `user_id`    BIGINT UNSIGNED NOT NULL COMMENT 'comment author user id',
   `parent_id`  BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'parent comment id, 0 = top level',
@@ -101,28 +113,30 @@ CREATE TABLE IF NOT EXISTS `comments` (
   `status`     TINYINT         NOT NULL DEFAULT 1 COMMENT 'status: 1 visible / 0 hidden',
   `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_comments_work` (`work_id`, `status`, `created_at`),
-  KEY `idx_comments_parent` (`parent_id`, `status`, `created_at`)
+  KEY `idx_comments_site_work` (`site`, `work_id`, `status`, `created_at`),
+  KEY `idx_comments_site_parent` (`site`, `parent_id`, `status`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='work comments';
 
 -- ---------------------------------------------------------------------------
--- favorites (phase 3)
+-- favorites（隔离表）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `favorites` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `site`       VARCHAR(32)     NOT NULL DEFAULT '' COMMENT 'tenant site id',
   `work_id`    BIGINT UNSIGNED NOT NULL COMMENT 'favorited work id',
   `user_id`    BIGINT UNSIGNED NOT NULL COMMENT 'user who favorited',
   `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_favorites_work_user` (`work_id`, `user_id`),
-  KEY `idx_favorites_user` (`user_id`, `created_at`)
+  UNIQUE KEY `uk_favorites_site_work_user` (`site`, `work_id`, `user_id`),
+  KEY `idx_favorites_site_user` (`site`, `user_id`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='work favorites';
 
 -- ---------------------------------------------------------------------------
--- reports (phase 3: content moderation)
+-- reports（隔离表：内容举报）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `reports` (
   `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `site`        VARCHAR(32)     NOT NULL DEFAULT '' COMMENT 'tenant site id',
   `target_type` VARCHAR(10)     NOT NULL COMMENT 'target type: work / comment',
   `target_id`   BIGINT UNSIGNED NOT NULL COMMENT 'reported work id or comment id',
   `user_id`     BIGINT UNSIGNED NOT NULL COMMENT 'reporter user id',
@@ -131,16 +145,17 @@ CREATE TABLE IF NOT EXISTS `reports` (
   `status`      TINYINT         NOT NULL DEFAULT 0 COMMENT 'status: 0 pending / 1 resolved / 2 rejected',
   `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_reports_target_user` (`target_type`, `target_id`, `user_id`),
-  KEY `idx_reports_status` (`status`, `created_at`),
-  KEY `idx_reports_target` (`target_type`, `target_id`)
+  UNIQUE KEY `uk_reports_site_target_user` (`site`, `target_type`, `target_id`, `user_id`),
+  KEY `idx_reports_site_status` (`site`, `status`, `created_at`),
+  KEY `idx_reports_site_target` (`site`, `target_type`, `target_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='content reports';
 
 -- ---------------------------------------------------------------------------
--- announcements (site announcements published by admins)
+-- announcements（隔离表：站点公告，各分支独立管理）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `announcements` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `site`       VARCHAR(32)     NOT NULL DEFAULT '' COMMENT 'tenant site id',
   `title`      VARCHAR(120)    NOT NULL COMMENT 'announcement title',
   `content`    TEXT            NOT NULL COMMENT 'announcement body (plain text)',
   `status`     TINYINT         NOT NULL DEFAULT 1 COMMENT 'status: 1 published / 0 draft',
@@ -149,14 +164,15 @@ CREATE TABLE IF NOT EXISTS `announcements` (
   `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_announcements_status` (`status`, `pinned`, `created_at`)
+  KEY `idx_announcements_site_status` (`site`, `status`, `pinned`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='site announcements';
 
 -- ---------------------------------------------------------------------------
--- work_assets (phase 2: user uploaded assets)
+-- work_assets（隔离表：用户上传素材）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `work_assets` (
   `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `site`        VARCHAR(32)     NOT NULL DEFAULT '' COMMENT 'tenant site id',
   `user_id`     BIGINT UNSIGNED NOT NULL COMMENT 'owner user id',
   `type`        VARCHAR(10)     NOT NULL COMMENT 'asset type: bg / sprite / bgm / sfx',
   `name`        VARCHAR(120)    NOT NULL DEFAULT '' COMMENT 'display name (original filename)',
@@ -173,13 +189,13 @@ CREATE TABLE IF NOT EXISTS `work_assets` (
   `status`      TINYINT         NOT NULL DEFAULT 1 COMMENT 'status: 1 active / 0 deleted',
   `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_assets_user_hash` (`user_id`, `hash`),
-  KEY `idx_assets_user_type` (`user_id`, `type`, `status`),
-  KEY `idx_assets_public` (`visibility`, `status`, `type`)
+  UNIQUE KEY `uk_assets_site_user_hash` (`site`, `user_id`, `hash`),
+  KEY `idx_assets_site_user_type` (`site`, `user_id`, `type`, `status`),
+  KEY `idx_assets_site_public` (`site`, `visibility`, `status`, `type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='user uploaded assets';
 
 -- ---------------------------------------------------------------------------
--- register_attempts (phase 2: registration rate limiting)
+-- register_attempts（共享表：注册限频，账号通用）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `register_attempts` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -191,7 +207,7 @@ CREATE TABLE IF NOT EXISTS `register_attempts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='registration rate limit attempts';
 
 -- ---------------------------------------------------------------------------
--- sessions (remember-me tokens)
+-- sessions（共享表：remember-me token，跨站点统一登录态）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `sessions` (
   `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -208,7 +224,7 @@ CREATE TABLE IF NOT EXISTS `sessions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='login sessions';
 
 -- ---------------------------------------------------------------------------
--- password_resets (password reset tokens, single-use + short-lived)
+-- password_resets（共享表）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `password_resets` (
   `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -226,7 +242,7 @@ CREATE TABLE IF NOT EXISTS `password_resets` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='password reset tokens';
 
 -- ---------------------------------------------------------------------------
--- email_verifications (email verification tokens, single-use + short-lived)
+-- email_verifications（共享表）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `email_verifications` (
   `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

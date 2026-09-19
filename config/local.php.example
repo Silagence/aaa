@@ -11,6 +11,9 @@ return [
         'env'   => 'development',
         'debug' => true,
         'url'   => 'http://127.0.0.1:8000',
+        // 多租户站点标识：同一数据库承载多个分支部署时用于隔离业务数据。
+        // 每个部署填写唯一标识（如 'main' / 'asha'），共享 users/sessions 表实现统一登录。
+        'site'  => 'main',
     ],
 
     'db' => [

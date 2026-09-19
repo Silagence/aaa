@@ -20,6 +20,10 @@ return [
         'debug'    => $local['app']['debug'] ?? false,
         'url'      => $local['app']['url'] ?? '',             // 留空则自动推断
         'timezone' => 'Asia/Shanghai',
+        // 多租户站点标识：同一数据库承载多个分支部署时，隔离作品/素材等业务数据。
+        // 每个部署在 config/local.php 中填写自己的 site（如 'main' / 'asha'）。
+        // 留空或缺失时回落为 'default'，与未配置 site 的历史数据兼容。
+        'site'     => $local['app']['site'] ?? 'default',
     ],
 
     // 数据库

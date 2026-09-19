@@ -4,6 +4,10 @@
  *
  * 素材物理文件存放在 storage/uploads/{userId}/{type}/{yyyyMM}/{hash}.{ext}，
  * 由 Nginx 映射到 /uploads/ 对外访问；数据库仅记录元信息。
+ *
+ * 多租户：所有查询按 site 隔离。每个部署独立 storage/ 目录，
+ * 因查询时按 site 过滤，不会跨站点读取到对方素材记录，物理文件天然隔离。
+ * 唯一键 (site, user_id, hash) 保证同用户同 hash 在同站点内去重。
  */
 
 declare(strict_types=1);
@@ -12,12 +16,17 @@ namespace App\Models;
 
 use App\Core\DB;
 use App\Core\Model;
+use App\Core\Tenant;
+use App\Core\TenantScoped;
 
 class Asset extends Model
 {
+    use TenantScoped;
+
     protected static string $table = 'work_assets';
 
     protected static array $fillable = [
+        'site',
         'user_id',
         'type',
         'name',
@@ -49,9 +58,9 @@ class Asset extends Model
     {
         return DB::select(
             'SELECT * FROM `work_assets`
-             WHERE user_id = ? AND status = 1
+             WHERE site = ? AND user_id = ? AND status = 1
              ORDER BY type ASC, created_at DESC',
-            [$userId]
+            [Tenant::current(), $userId]
         );
     }
 
@@ -61,22 +70,22 @@ class Asset extends Model
     public static function findOwned(int $id, int $userId): ?array
     {
         return DB::first(
-            'SELECT * FROM `work_assets` WHERE id = ? AND user_id = ? AND status = 1 LIMIT 1',
-            [$id, $userId]
+            'SELECT * FROM `work_assets` WHERE site = ? AND id = ? AND user_id = ? AND status = 1 LIMIT 1',
+            [Tenant::current(), $id, $userId]
         );
     }
 
     /**
      * 按内容哈希查找同用户已有素材（秒传 / 去重）
      *
-     * 不过滤 status：唯一键 (user_id, hash) 对软删记录同样生效，
+     * 不过滤 status：唯一键 (site, user_id, hash) 对软删记录同样生效，
      * 若忽略软删记录会导致重复上传时触发唯一键冲突。
      */
     public static function findByHash(int $userId, string $hash): ?array
     {
         return DB::first(
-            'SELECT * FROM `work_assets` WHERE user_id = ? AND hash = ? LIMIT 1',
-            [$userId, $hash]
+            'SELECT * FROM `work_assets` WHERE site = ? AND user_id = ? AND hash = ? LIMIT 1',
+            [Tenant::current(), $userId, $hash]
         );
     }
 
@@ -91,7 +100,12 @@ class Asset extends Model
                 $fields[$key] = $data[$key];
             }
         }
-        return DB::update('work_assets', $fields, 'id = ? AND user_id = ?', [$id, $userId]);
+        return DB::update(
+            'work_assets',
+            $fields,
+            'site = ? AND id = ? AND user_id = ?',
+            [Tenant::current(), $id, $userId]
+        );
     }
 
     /**
@@ -103,8 +117,8 @@ class Asset extends Model
     {
         $row = DB::first(
             'SELECT COALESCE(SUM(size), 0) AS bytes, COUNT(*) AS cnt
-             FROM `work_assets` WHERE user_id = ? AND status = 1',
-            [$userId]
+             FROM `work_assets` WHERE site = ? AND user_id = ? AND status = 1',
+            [Tenant::current(), $userId]
         );
         return [
             'bytes' => (int) ($row['bytes'] ?? 0),
@@ -118,8 +132,8 @@ class Asset extends Model
     public static function softDelete(int $id, int $userId): int
     {
         return DB::execute(
-            'UPDATE `work_assets` SET status = 0 WHERE id = ? AND user_id = ? AND status = 1',
-            [$id, $userId]
+            'UPDATE `work_assets` SET status = 0 WHERE site = ? AND id = ? AND user_id = ? AND status = 1',
+            [Tenant::current(), $id, $userId]
         );
     }
 
@@ -138,7 +152,12 @@ class Asset extends Model
         if ($allowed === []) {
             return 0;
         }
-        return DB::update('work_assets', $allowed, 'id = ? AND user_id = ? AND status = 1', [$id, $userId]);
+        return DB::update(
+            'work_assets',
+            $allowed,
+            'site = ? AND id = ? AND user_id = ? AND status = 1',
+            [Tenant::current(), $id, $userId]
+        );
     }
 
     /**
@@ -158,8 +177,8 @@ class Asset extends Model
 
         $rows = DB::select(
             'SELECT id, title, data FROM `works`
-             WHERE user_id = ? AND status = 1 AND data IS NOT NULL',
-            [$userId]
+             WHERE site = ? AND user_id = ? AND status = 1 AND data IS NOT NULL',
+            [Tenant::current(), $userId]
         );
 
         $hits = [];
@@ -182,6 +201,8 @@ class Asset extends Model
      * 生成素材在作品中的引用 id
      *
      * 加 u{userId}_ 前缀，与内置素材 id 天然隔离，避免冲突。
+     * 注：同 userId 在不同站点可能有不同的 asset_id；引用 id 仅在作品 JSON 内部使用，
+     * 配合按 site 过滤的素材查找即可保证隔离，无需把 site 编码进 refId。
      */
     public static function refId(int $userId, int $assetId): string
     {

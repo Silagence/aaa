@@ -4,6 +4,8 @@
  *
  * 评论采用软删除（status = 0），保留记录便于追溯。
  * 列表查询统一 JOIN users 带出作者昵称与头像。
+ *
+ * 多租户：所有查询按 site 隔离，包括 admin 跨作品 JOIN 也按 site 过滤。
  */
 
 declare(strict_types=1);
@@ -12,12 +14,16 @@ namespace App\Models;
 
 use App\Core\DB;
 use App\Core\Model;
+use App\Core\Tenant;
+use App\Core\TenantScoped;
 
 class Comment extends Model
 {
+    use TenantScoped;
+
     protected static string $table = 'comments';
 
-    protected static array $fillable = ['work_id', 'user_id', 'parent_id', 'content', 'status'];
+    protected static array $fillable = ['site', 'work_id', 'user_id', 'parent_id', 'content', 'status'];
 
     /** 单条评论最大字数 */
     public const MAX_LENGTH = 500;
@@ -36,8 +42,8 @@ class Comment extends Model
     {
         $perPage = max(1, min(50, $perPage));
         $total = (int) DB::value(
-            'SELECT COUNT(*) FROM `comments` WHERE work_id = ? AND parent_id = 0 AND status = 1',
-            [$workId]
+            'SELECT COUNT(*) FROM `comments` WHERE site = ? AND work_id = ? AND parent_id = 0 AND status = 1',
+            [Tenant::current(), $workId]
         );
         $pages = max(1, (int) ceil($total / $perPage));
         $page = max(1, min($pages, $page));
@@ -48,10 +54,10 @@ class Comment extends Model
                     u.nickname AS author_nickname, u.email AS author_email, u.avatar AS author_avatar
              FROM `comments` c
              LEFT JOIN `users` u ON u.id = c.user_id
-             WHERE c.work_id = ? AND c.parent_id = 0 AND c.status = 1
+             WHERE c.site = ? AND c.work_id = ? AND c.parent_id = 0 AND c.status = 1
              ORDER BY c.id DESC
              LIMIT ' . $perPage . ' OFFSET ' . $offset,
-            [$workId]
+            [Tenant::current(), $workId]
         );
 
         return [
@@ -65,6 +71,8 @@ class Comment extends Model
 
     /**
      * 查询一批顶级评论下的可见回复（按时间正序，便于阅读）
+     *
+     * 回复归属于顶级评论，同一站点下 parent_id 不会跨作品错配。
      *
      * @param int[] $parentIds 顶级评论 ID 列表
      * @return array<int, array> 以 parent_id 为键分组的回复列表
@@ -82,9 +90,9 @@ class Comment extends Model
                     u.nickname AS author_nickname, u.email AS author_email, u.avatar AS author_avatar
              FROM `comments` c
              LEFT JOIN `users` u ON u.id = c.user_id
-             WHERE c.parent_id IN (' . $placeholders . ') AND c.status = 1
+             WHERE c.site = ? AND c.parent_id IN (' . $placeholders . ') AND c.status = 1
              ORDER BY c.id ASC',
-            $parentIds
+            array_merge([Tenant::current()], $parentIds)
         );
 
         $grouped = [];
@@ -104,9 +112,9 @@ class Comment extends Model
                     u.nickname AS author_nickname, u.email AS author_email, u.avatar AS author_avatar
              FROM `comments` c
              LEFT JOIN `users` u ON u.id = c.user_id
-             WHERE c.id = ? AND c.status = 1
+             WHERE c.site = ? AND c.id = ? AND c.status = 1
              LIMIT 1',
-            [$id]
+            [Tenant::current(), $id]
         );
     }
 
@@ -116,13 +124,13 @@ class Comment extends Model
     public static function softDelete(int $id): int
     {
         $affected = DB::execute(
-            'UPDATE `comments` SET status = 0 WHERE id = ? AND status = 1',
-            [$id]
+            'UPDATE `comments` SET status = 0 WHERE site = ? AND id = ? AND status = 1',
+            [Tenant::current(), $id]
         );
         if ($affected > 0) {
             DB::execute(
-                'UPDATE `comments` SET status = 0 WHERE parent_id = ? AND status = 1',
-                [$id]
+                'UPDATE `comments` SET status = 0 WHERE site = ? AND parent_id = ? AND status = 1',
+                [Tenant::current(), $id]
             );
         }
         return $affected;
@@ -134,8 +142,8 @@ class Comment extends Model
     public static function countByWork(int $workId): int
     {
         return (int) DB::value(
-            'SELECT COUNT(*) FROM `comments` WHERE work_id = ? AND status = 1',
-            [$workId]
+            'SELECT COUNT(*) FROM `comments` WHERE site = ? AND work_id = ? AND status = 1',
+            [Tenant::current(), $workId]
         );
     }
 }

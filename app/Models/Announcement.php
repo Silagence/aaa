@@ -1,9 +1,11 @@
 <?php
 /**
- * 网站公告模型
+ * 站点公告模型
  *
  * 管理员发布公告，普通用户在站内查看。
  * status = 1 表示已发布（对外可见），0 表示草稿（仅后台可见）。
+ *
+ * 多租户：公告按 site 隔离，每个分支管理自己的公告，互不影响。
  */
 
 declare(strict_types=1);
@@ -12,12 +14,16 @@ namespace App\Models;
 
 use App\Core\DB;
 use App\Core\Model;
+use App\Core\Tenant;
+use App\Core\TenantScoped;
 
 class Announcement extends Model
 {
+    use TenantScoped;
+
     protected static string $table = 'announcements';
 
-    protected static array $fillable = ['title', 'content', 'status', 'pinned', 'admin_id'];
+    protected static array $fillable = ['site', 'title', 'content', 'status', 'pinned', 'admin_id'];
 
     /** 发布状态 */
     public const STATUS_DRAFT     = 0;
@@ -49,7 +55,7 @@ class Announcement extends Model
     }
 
     /**
-     * 后台分页查询公告列表
+     * 后台分页查询公告列表（仅当前站点）
      *
      * @param array{status?: int|null, keyword?: string} $filters
      * @return array{items: array, total: int, page: int, perPage: int, pages: int}
@@ -58,8 +64,8 @@ class Announcement extends Model
     {
         $perPage = max(1, min(100, $perPage));
 
-        $where = [];
-        $params = [];
+        $where = ['a.site = ?'];
+        $params = [Tenant::current()];
 
         $status = $filters['status'] ?? null;
         if ($status !== null && $status !== '') {
@@ -103,7 +109,7 @@ class Announcement extends Model
     }
 
     /**
-     * 按 ID 查找公告（带出发布人信息）
+     * 按 ID 查找公告（带出发布人信息；仅当前站点）
      */
     public static function findForAdmin(int $id): ?array
     {
@@ -112,9 +118,9 @@ class Announcement extends Model
                     u.nickname AS admin_nickname, u.email AS admin_email
              FROM `announcements` a
              LEFT JOIN `users` u ON u.id = a.admin_id
-             WHERE a.id = ?
+             WHERE a.site = ? AND a.id = ?
              LIMIT 1',
-            [$id]
+            [Tenant::current(), $id]
         );
     }
 
@@ -126,12 +132,13 @@ class Announcement extends Model
     public static function published(int $limit = 0): array
     {
         $sql = 'SELECT * FROM `announcements`
-                WHERE status = ' . self::STATUS_PUBLISHED . '
+                WHERE site = ? AND status = ' . self::STATUS_PUBLISHED . '
                 ORDER BY pinned DESC, id DESC';
+        $params = [Tenant::current()];
         if ($limit > 0) {
             $sql .= ' LIMIT ' . max(1, $limit);
         }
-        return DB::select($sql);
+        return DB::select($sql, $params);
     }
 
     /**
@@ -141,19 +148,22 @@ class Announcement extends Model
     {
         return DB::first(
             'SELECT * FROM `announcements`
-             WHERE status = ?
+             WHERE site = ? AND status = ?
              ORDER BY pinned DESC, id DESC
              LIMIT 1',
-            [self::STATUS_PUBLISHED]
+            [Tenant::current(), self::STATUS_PUBLISHED]
         );
     }
 
     /**
-     * 按状态统计公告数量
+     * 按状态统计公告数量（仅当前站点）
      */
     public static function countByStatus(int $status): int
     {
-        return (int) DB::value('SELECT COUNT(*) FROM `announcements` WHERE status = ?', [$status]);
+        return (int) DB::value(
+            'SELECT COUNT(*) FROM `announcements` WHERE site = ? AND status = ?',
+            [Tenant::current(), $status]
+        );
     }
 
     /**
@@ -161,7 +171,10 @@ class Announcement extends Model
      */
     public static function setStatus(int $id, int $status): int
     {
-        return DB::execute('UPDATE `announcements` SET status = ? WHERE id = ?', [$status, $id]);
+        return DB::execute(
+            'UPDATE `announcements` SET status = ? WHERE site = ? AND id = ?',
+            [$status, Tenant::current(), $id]
+        );
     }
 
     /**
@@ -169,6 +182,9 @@ class Announcement extends Model
      */
     public static function setPinned(int $id, int $pinned): int
     {
-        return DB::execute('UPDATE `announcements` SET pinned = ? WHERE id = ?', [$pinned, $id]);
+        return DB::execute(
+            'UPDATE `announcements` SET pinned = ? WHERE site = ? AND id = ?',
+            [$pinned, Tenant::current(), $id]
+        );
     }
 }

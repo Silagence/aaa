@@ -1,6 +1,9 @@
 <?php
 /**
  * 作品模型
+ *
+ * 多租户：所有查询与写入均按 Tenant::current() 注入 site 字段，
+ * 跨站点数据相互隔离；用户身份（users 表）由各站点共享。
  */
 
 declare(strict_types=1);
@@ -9,12 +12,17 @@ namespace App\Models;
 
 use App\Core\DB;
 use App\Core\Model;
+use App\Core\Tenant;
+use App\Core\TenantScoped;
 
 class Work extends Model
 {
+    use TenantScoped;
+
     protected static string $table = 'works';
 
     protected static array $fillable = [
+        'site',
         'user_id',
         'title',
         'description',
@@ -46,9 +54,9 @@ class Work extends Model
         return DB::select(
             'SELECT ' . self::LIST_COLUMNS . '
              FROM `works`
-             WHERE user_id = ? AND status = 1
+             WHERE site = ? AND user_id = ? AND status = 1
              ORDER BY updated_at DESC',
-            [$userId]
+            [Tenant::current(), $userId]
         );
     }
 
@@ -61,8 +69,8 @@ class Work extends Model
     {
         $perPage = max(1, min(50, $perPage));
         $total = (int) DB::value(
-            'SELECT COUNT(*) FROM `works` WHERE user_id = ? AND status = 1',
-            [$userId]
+            'SELECT COUNT(*) FROM `works` WHERE site = ? AND user_id = ? AND status = 1',
+            [Tenant::current(), $userId]
         );
         $pages = max(1, (int) ceil($total / $perPage));
         $page = max(1, min($pages, $page));
@@ -71,10 +79,10 @@ class Work extends Model
         $items = DB::select(
             'SELECT ' . self::LIST_COLUMNS . '
              FROM `works`
-             WHERE user_id = ? AND status = 1
+             WHERE site = ? AND user_id = ? AND status = 1
              ORDER BY updated_at DESC
              LIMIT ' . $perPage . ' OFFSET ' . $offset,
-            [$userId]
+            [Tenant::current(), $userId]
         );
 
         return [
@@ -92,8 +100,8 @@ class Work extends Model
     public static function findOwned(int $id, int $userId): ?array
     {
         return DB::first(
-            'SELECT * FROM `works` WHERE id = ? AND user_id = ? AND status = 1 LIMIT 1',
-            [$id, $userId]
+            'SELECT * FROM `works` WHERE site = ? AND id = ? AND user_id = ? AND status = 1 LIMIT 1',
+            [Tenant::current(), $id, $userId]
         );
     }
 
@@ -103,8 +111,8 @@ class Work extends Model
     public static function softDelete(int $id, int $userId): int
     {
         return DB::execute(
-            'UPDATE `works` SET status = 0 WHERE id = ? AND user_id = ? AND status = 1',
-            [$id, $userId]
+            'UPDATE `works` SET status = 0 WHERE site = ? AND id = ? AND user_id = ? AND status = 1',
+            [Tenant::current(), $id, $userId]
         );
     }
 
@@ -131,8 +139,8 @@ class Work extends Model
         }
 
         DB::execute(
-            'UPDATE `works` SET is_public = ?, short_code = ? WHERE id = ? AND user_id = ? AND status = 1',
-            [$public ? 1 : 0, $shortCode !== '' ? $shortCode : null, $id, $userId]
+            'UPDATE `works` SET is_public = ?, short_code = ? WHERE site = ? AND id = ? AND user_id = ? AND status = 1',
+            [$public ? 1 : 0, $shortCode !== '' ? $shortCode : null, Tenant::current(), $id, $userId]
         );
 
         return ['ok' => true, 'short_code' => $shortCode];
@@ -142,6 +150,7 @@ class Work extends Model
      * 生成未被占用的短链码
      *
      * 随机 8 位（约 57^8 组合），碰撞概率极低；仍做一次存在性检查兜底。
+     * 短链在 (site, short_code) 维度唯一，不同站点可复用相同短链。
      */
     private static function generateShortCode(): string
     {
@@ -153,7 +162,7 @@ class Work extends Model
             for ($i = 0; $i < self::SHORT_CODE_LENGTH; $i++) {
                 $code .= $alphabet[random_int(0, $max)];
             }
-            if (!self::exists('short_code', $code)) {
+            if (!self::existsShortCode($code)) {
                 return $code;
             }
         }
@@ -163,7 +172,18 @@ class Work extends Model
     }
 
     /**
-     * 按短链码查找已发布的公开作品
+     * 当前站点是否已存在该短链
+     */
+    private static function existsShortCode(string $code): bool
+    {
+        return (int) DB::value(
+            'SELECT COUNT(*) FROM `works` WHERE site = ? AND short_code = ?',
+            [Tenant::current(), $code]
+        ) > 0;
+    }
+
+    /**
+     * 按短链码查找已发布的公开作品（仅在当前站点内查找）
      */
     public static function findByShortCode(string $code): ?array
     {
@@ -171,8 +191,8 @@ class Work extends Model
             return null;
         }
         return DB::first(
-            'SELECT * FROM `works` WHERE short_code = ? AND status = 1 AND is_public = 1 LIMIT 1',
-            [$code]
+            'SELECT * FROM `works` WHERE site = ? AND short_code = ? AND status = 1 AND is_public = 1 LIMIT 1',
+            [Tenant::current(), $code]
         );
     }
 
@@ -188,9 +208,9 @@ class Work extends Model
             'SELECT w.*, u.nickname AS author_nickname, u.email AS author_email, u.bio AS author_bio, u.avatar AS author_avatar
              FROM `works` w
              LEFT JOIN `users` u ON u.id = w.user_id
-             WHERE w.short_code = ? AND w.status = 1 AND w.is_public = 1
+             WHERE w.site = ? AND w.short_code = ? AND w.status = 1 AND w.is_public = 1
              LIMIT 1',
-            [$code]
+            [Tenant::current(), $code]
         );
     }
 
@@ -200,8 +220,8 @@ class Work extends Model
     public static function incrementPlayCount(int $id): void
     {
         DB::execute(
-            'UPDATE `works` SET play_count = play_count + 1 WHERE id = ? AND status = 1',
-            [$id]
+            'UPDATE `works` SET play_count = play_count + 1 WHERE site = ? AND id = ? AND status = 1',
+            [Tenant::current(), $id]
         );
     }
 
@@ -210,8 +230,14 @@ class Work extends Model
      */
     public static function syncLikeCount(int $id): int
     {
-        $count = (int) DB::value('SELECT COUNT(*) FROM `likes` WHERE work_id = ?', [$id]);
-        DB::execute('UPDATE `works` SET like_count = ? WHERE id = ?', [$count, $id]);
+        $count = (int) DB::value(
+            'SELECT COUNT(*) FROM `likes` WHERE site = ? AND work_id = ?',
+            [Tenant::current(), $id]
+        );
+        DB::execute(
+            'UPDATE `works` SET like_count = ? WHERE site = ? AND id = ?',
+            [$count, Tenant::current(), $id]
+        );
         return $count;
     }
 
@@ -258,9 +284,10 @@ class Work extends Model
     {
         $rows = DB::select(
             'SELECT tags FROM `works`
-             WHERE status = 1 AND is_public = 1 AND tags <> \'\'
+             WHERE site = ? AND status = 1 AND is_public = 1 AND tags <> \'\'
              ORDER BY updated_at DESC
-             LIMIT 500'
+             LIMIT 500',
+            [Tenant::current()]
         );
 
         $counter = [];
@@ -273,7 +300,7 @@ class Work extends Model
         arsort($counter);
         $result = [];
         foreach (array_slice($counter, 0, $limit, true) as $tag => $count) {
-            $result[] = ['tag' => (string) $tag, 'count' => $count];
+            $result[] = ['tag' => (string) $tag, 'count' => (int) $count];
         }
         return $result;
     }
@@ -290,8 +317,8 @@ class Work extends Model
     {
         $perPage = max(1, min(50, $perPage));
 
-        $where = ['w.status = 1', 'w.is_public = 1'];
-        $params = [];
+        $where = ['w.site = ?', 'w.status = 1', 'w.is_public = 1'];
+        $params = [Tenant::current()];
 
         $keyword = trim((string) ($filters['keyword'] ?? ''));
         if ($keyword !== '') {
@@ -357,9 +384,9 @@ class Work extends Model
             'SELECT w.*, u.nickname AS author_nickname, u.email AS author_email, u.bio AS author_bio, u.avatar AS author_avatar
              FROM `works` w
              LEFT JOIN `users` u ON u.id = w.user_id
-             WHERE w.id = ? AND w.status = 1 AND w.is_public = 1
+             WHERE w.site = ? AND w.id = ? AND w.status = 1 AND w.is_public = 1
              LIMIT 1',
-            [$id]
+            [Tenant::current(), $id]
         );
     }
 
@@ -369,8 +396,8 @@ class Work extends Model
     public static function findPublic(int $id): ?array
     {
         return DB::first(
-            'SELECT * FROM `works` WHERE id = ? AND status = 1 AND is_public = 1 LIMIT 1',
-            [$id]
+            'SELECT * FROM `works` WHERE site = ? AND id = ? AND status = 1 AND is_public = 1 LIMIT 1',
+            [Tenant::current(), $id]
         );
     }
 
@@ -380,8 +407,8 @@ class Work extends Model
     public static function countByUser(int $userId): int
     {
         return (int) DB::value(
-            'SELECT COUNT(*) FROM `works` WHERE user_id = ? AND status = 1',
-            [$userId]
+            'SELECT COUNT(*) FROM `works` WHERE site = ? AND user_id = ? AND status = 1',
+            [Tenant::current(), $userId]
         );
     }
 
@@ -389,12 +416,13 @@ class Work extends Model
      * 管理员强制下架作品（取消发布，保留短链与数据）
      *
      * 与作者自行取消发布的区别：不校验归属，仅要求作品存在且未被删除。
+     * 仅限本站点范围，避免管理员误操作其他站点作品。
      */
     public static function forceUnpublish(int $id): bool
     {
         return DB::execute(
-            'UPDATE `works` SET is_public = 0 WHERE id = ? AND status = 1 AND is_public = 1',
-            [$id]
+            'UPDATE `works` SET is_public = 0 WHERE site = ? AND id = ? AND status = 1 AND is_public = 1',
+            [Tenant::current(), $id]
         ) > 0;
     }
 
@@ -404,8 +432,8 @@ class Work extends Model
     public static function forceDelete(int $id): bool
     {
         return DB::execute(
-            'UPDATE `works` SET status = 0, is_public = 0 WHERE id = ? AND status = 1',
-            [$id]
+            'UPDATE `works` SET status = 0, is_public = 0 WHERE site = ? AND id = ? AND status = 1',
+            [Tenant::current(), $id]
         ) > 0;
     }
 
@@ -417,13 +445,15 @@ class Work extends Model
     public static function setPublicByAdmin(int $id, bool $public): bool
     {
         return DB::execute(
-            'UPDATE `works` SET is_public = ? WHERE id = ? AND status = 1',
-            [$public ? 1 : 0, $id]
+            'UPDATE `works` SET is_public = ? WHERE site = ? AND id = ? AND status = 1',
+            [$public ? 1 : 0, Tenant::current(), $id]
         ) > 0;
     }
 
     /**
      * 后台分页查询作品（含作者信息，可按标题/作者关键词过滤）
+     *
+     * 仅返回当前站点的作品，管理员无法跨站点管理。
      *
      * @param array{keyword?: string, status?: int|null} $filters
      * @return array{items: array, total: int, page: int, perPage: int, pages: int}
@@ -432,8 +462,8 @@ class Work extends Model
     {
         $perPage = max(1, min(100, $perPage));
 
-        $where = [];
-        $params = [];
+        $where = ['w.site = ?'];
+        $params = [Tenant::current()];
 
         $keyword = trim((string) ($filters['keyword'] ?? ''));
         if ($keyword !== '') {
@@ -480,14 +510,15 @@ class Work extends Model
     }
 
     /**
-     * 后台统计：作品总数 / 已发布数
+     * 后台统计：作品总数 / 已发布数（仅当前站点）
      */
     public static function countAll(bool $onlyPublic = false): int
     {
-        $sql = 'SELECT COUNT(*) FROM `works` WHERE status = 1';
+        $sql = 'SELECT COUNT(*) FROM `works` WHERE site = ? AND status = 1';
+        $params = [Tenant::current()];
         if ($onlyPublic) {
             $sql .= ' AND is_public = 1';
         }
-        return (int) DB::value($sql);
+        return (int) DB::value($sql, $params);
     }
 }

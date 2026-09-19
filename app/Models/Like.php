@@ -2,7 +2,7 @@
 /**
  * 作品点赞模型
  *
- * 点赞关系以 (work_id, user_id) 唯一索引保证幂等，
+ * 点赞关系以 (site, work_id, user_id) 唯一索引保证幂等，
  * works.like_count 仅作冗余计数，写入后统一由 Work::syncLikeCount() 校正。
  */
 
@@ -12,21 +12,25 @@ namespace App\Models;
 
 use App\Core\DB;
 use App\Core\Model;
+use App\Core\Tenant;
+use App\Core\TenantScoped;
 
 class Like extends Model
 {
+    use TenantScoped;
+
     protected static string $table = 'likes';
 
-    protected static array $fillable = ['work_id', 'user_id'];
+    protected static array $fillable = ['site', 'work_id', 'user_id'];
 
     /**
-     * 是否已点赞
+     * 是否已点赞（仅查当前站点）
      */
     public static function existsBy(int $workId, int $userId): bool
     {
         return (int) DB::value(
-            'SELECT COUNT(*) FROM `likes` WHERE work_id = ? AND user_id = ?',
-            [$workId, $userId]
+            'SELECT COUNT(*) FROM `likes` WHERE site = ? AND work_id = ? AND user_id = ?',
+            [Tenant::current(), $workId, $userId]
         ) > 0;
     }
 
@@ -41,8 +45,8 @@ class Like extends Model
             return false;
         }
         DB::execute(
-            'INSERT INTO `likes` (`work_id`, `user_id`) VALUES (?, ?)',
-            [$workId, $userId]
+            'INSERT INTO `likes` (`site`, `work_id`, `user_id`) VALUES (?, ?, ?)',
+            [Tenant::current(), $workId, $userId]
         );
         return true;
     }
@@ -55,8 +59,8 @@ class Like extends Model
     public static function remove(int $workId, int $userId): bool
     {
         return DB::execute(
-            'DELETE FROM `likes` WHERE work_id = ? AND user_id = ?',
-            [$workId, $userId]
+            'DELETE FROM `likes` WHERE site = ? AND work_id = ? AND user_id = ?',
+            [Tenant::current(), $workId, $userId]
         ) > 0;
     }
 
@@ -75,8 +79,9 @@ class Like extends Model
 
         $placeholders = implode(', ', array_fill(0, count($workIds), '?'));
         $rows = DB::select(
-            'SELECT work_id FROM `likes` WHERE user_id = ? AND work_id IN (' . $placeholders . ')',
-            array_merge([$userId], $workIds)
+            'SELECT work_id FROM `likes`
+             WHERE site = ? AND user_id = ? AND work_id IN (' . $placeholders . ')',
+            array_merge([Tenant::current(), $userId], $workIds)
         );
 
         $map = [];
