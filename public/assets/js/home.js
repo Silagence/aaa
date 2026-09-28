@@ -1,6 +1,4 @@
-// 首页交互
-// 一期："开始使用"按钮暂不响应（按需求暂不跳转至编辑器）
-// 后续将启用：location.href = 'editor.php';
+// 首页交互："开始使用"按钮跳转至编辑器
 (function () {
     'use strict';
 
@@ -8,7 +6,7 @@
     if (btnStart) {
         btnStart.addEventListener('click', function () {
             // 跳转至编辑器
-            location.href = 'editor.php';
+            location.href = 'editor';
         });
     }
 

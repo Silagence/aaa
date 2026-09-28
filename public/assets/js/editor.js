@@ -2577,7 +2577,7 @@
         var data = buildExport();
         try {
             localStorage.setItem(PREVIEW_KEY, JSON.stringify(data));
-            window.open('player.php?mode=preview', '_blank');
+            window.open('player?mode=preview', '_blank');
         } catch (e) {
             toast('预览失败：' + e.message, 'err');
         }
