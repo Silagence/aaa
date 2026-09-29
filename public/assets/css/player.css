@@ -28,12 +28,17 @@
     inset: 0;
 }
 
-/* ===== 背景层 ===== */
+/* ===== 背景层 =====
+ * 还原游戏表现：背景图按原始比例完整显示（contain）居中，
+ * 两侧留白用补边素材填满——左侧 BackGround_Other.png、右侧 BackGround_Other2.png。
+ * 三层背景顺序：背景图（最上）→ 左补边 → 右补边（最下）。
+ * 补边的尺寸与位置由 player.js 的 layoutBg() 动态计算（见该函数注释）：
+ *   窗口过宽 → 拉伸补边填满留白；窗口过窄 → 裁掉远离背景图的一侧
+ *   （左补边裁左侧、右补边裁右侧），保证靠近背景图的灰色部分始终可见。
+ */
 .bg-layer-player {
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-color: var(--bg-elevated);
+    background-color: #000;
+    background-repeat: no-repeat, no-repeat, no-repeat;
     transition: opacity 0.6s ease, background-image 0.6s ease;
 }
 .bg-layer-player.is-fading {
@@ -102,44 +107,97 @@
 .sprite.is-dim.is-speaker { filter: brightness(0.45) saturate(0.7); }
 .sprite img { height: 100%; display: block; }
 
-/* ===== 对话框 ===== */
+/* ===== 底部遮罩 =====
+ * DownMask.png 铺满舞台底部，压在对话框图层下方，
+ * 让立绘与背景在底部自然过渡（还原游戏表现）。
+ */
+.stage::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 56%;
+    background: url("../css/img/DownMask.png") center bottom / 100% 100% no-repeat;
+    pointer-events: none;
+    z-index: 4;
+}
+
+/* ===== 对话框 =====
+ * 底图 TalkBox.png（1024x194）整图拉伸铺满元素盒。
+ * 素材四周有透明留白，有效内容（可见边框）实测为 x[70..997] y[27..179]，
+ * 即 左70 / 右26 / 上27 / 下14 的透明边距，且内容并不居中。
+ * 元素盒保持整张素材比例（1024:194），素材按 100% 100% 铺满元素盒。
+ * 宽度对齐背景图中间部分（--bg-main-w，由 player.js 的 layoutBg() 计算），
+ * 即与用户所选背景图的显示宽度一致，左右边缘与背景图严格对齐。
+ * 内部元素（姓名栏、文本）统一乘以 --dialog-scale（= 元素宽度 / 1024），
+ * 并按素材透明留白做偏移，使文字落在可见边框内的灰色区域。
+ * --bg-main-w / --dialog-scale 未就绪时回退到 92% / 1。
+ */
 .dialog {
     position: absolute;
-    left: 50%;
-    bottom: 5%;
-    transform: translateX(-50%);
-    width: min(900px, 90%);
-    background: var(--bg-topbar);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 18px 24px 22px;
-    backdrop-filter: blur(8px);
-    box-shadow: var(--shadow);
+    /* 水平居中：left/right:0 + margin auto，基于 border box */
+    left: 0;
+    right: 0;
+    bottom: 4%;
+    width: var(--bg-main-w, 92%);
+    aspect-ratio: 1024 / 194;
+    min-height: 150px;
+    margin: 0 auto;
+    padding: 0;
+    background: url("../css/img/TalkBox.png") center center / 100% 100% no-repeat;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: none;
     z-index: 5;
     cursor: pointer;
 }
 .dialog[hidden] { display: none; }
 
+/* 姓名栏：NameBg.png（238x40）拉伸，文字居中、红色。
+ * 参考游戏截图，姓名栏重合在对话框左上角（部分压在对话框边框上）。
+ * 位置以素材有效内容区为基准：有效内容左边界 70、上边界 27（素材像素），
+ * 故 left 取 70 附近、top 取 27 附近再上移，使姓名栏压在边框左上角。 */
 .dialog__speaker {
-    font-size: 15px;
+    position: absolute;
+    left: calc(118px * var(--dialog-scale, 1));
+    top: calc(7px * var(--dialog-scale, 1));
+    min-width: calc(150px * var(--dialog-scale, 1));
+    max-width: 60%;
+    padding: calc(6px * var(--dialog-scale, 1)) calc(22px * var(--dialog-scale, 1));
+    background: url("../css/img/NameBg.png") center center / 100% 100% no-repeat;
+    font-size: calc(18px * var(--dialog-scale, 1));
     font-weight: 700;
     color: var(--accent);
-    margin-bottom: 8px;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
+    text-align: center;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .dialog__speaker:empty { display: none; }
 
+/* 对话文本：以素材有效内容区为基准留内边距。
+ * 有效内容左 70 / 右 26 / 上 27 / 下 14（素材像素），
+ * 再各留少量余量，确保文字落在边框内的灰色区域。 */
 .dialog__text {
-    font-size: 17px;
-    line-height: 1.7;
-    color: var(--text);
-    min-height: 48px;
+    position: absolute;
+    left: calc(138px * var(--dialog-scale, 1));
+    right: calc(44px * var(--dialog-scale, 1));
+    top: calc(48px * var(--dialog-scale, 1));
+    bottom: calc(30px * var(--dialog-scale, 1));
+    font-size: calc(20px * var(--dialog-scale, 1));
+    line-height: 1.75;
+    color: #e8e8e8;
     white-space: pre-wrap;
     word-break: break-word;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 .dialog__text .caret {
     display: inline-block;
-    width: 8px;
+    width: calc(8px * var(--dialog-scale, 1));
     background: var(--accent);
     margin-left: 2px;
     animation: blink 0.8s steps(1) infinite;
@@ -148,46 +206,108 @@
 
 .dialog__click-hint {
     position: absolute;
-    right: 18px;
-    bottom: 10px;
-    font-size: 14px;
-    color: var(--text-muted);
+    right: calc(34px * var(--dialog-scale, 1));
+    bottom: calc(16px * var(--dialog-scale, 1));
+    font-size: calc(14px * var(--dialog-scale, 1));
+    color: #b7b7b7;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
     animation: bob 1.2s ease-in-out infinite;
 }
 .dialog__click-hint[hidden] { display: none; }
 @keyframes bob { 50% { transform: translateY(3px); } }
 
-/* ===== 选项 ===== */
+/* ===== 选项 =====
+ * 还原游戏表现：选项分布在画面两侧，左右并不对称。
+ * 左列自上而下为选项 1/2/3，呈折线分布：1、3 偏右，2 偏左；
+ * 右列自上而下为选项 4/5/6，呈阶梯分布：4 偏左、5 居中、6 偏右。
+ * 最多 6 项。
+ * 水平范围：与背景图中间部分对齐（--bg-main-w），整体再向内收拢，
+ * 保证最外侧的选项（左列 2、右列 6）不超出背景图边界。
+ * 垂直位置：画面底部有对话框，故选项在「排除对话框后的区域」内垂直居中，
+ * 即 bottom 预留对话框高度（--dialog-h，由 player.js 的 layoutBg() 计算）。
+ * 选项框底图 ChoiceBg.png（379x102，有效内容 x[12..366] y[6..95]，
+ * 即四周约 12/12/6/6 的透明留白）整图拉伸铺满按钮，
+ * 按钮高度按素材比例（379:102）由宽度换算，保证不变形。
+ * 尺寸随窗口缩放：字号、图标、内边距、间距统一乘以 --choice-scale
+ * （= 背景图显示宽度 / 1024，由 player.js 的 layoutBg() 计算）。
+ */
 .choices {
     position: absolute;
+    /* 水平范围对齐背景图中间部分，并整体向内收拢 */
     left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
+    width: var(--bg-main-w, 92%);
+    top: 0;
+    bottom: var(--dialog-h, 0px);
     display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: min(480px, 80%);
+    justify-content: space-between;
+    align-items: center;
+    padding: 0;
+    gap: 4%;
     z-index: 6;
+    pointer-events: none;
 }
 .choices[hidden] { display: none; }
 
+/* 左右两列：各自纵向排列，列宽一致 */
+.choices__col {
+    display: flex;
+    flex-direction: column;
+    gap: calc(14px * var(--choice-scale, 1));
+    width: 30%;
+    max-width: calc(330px * var(--choice-scale, 1));
+    pointer-events: auto;
+}
+/* 左列折线：1、3 偏右，2 偏左 */
+.choices__col--left { align-items: flex-start; }
+.choices__col--left .choice:nth-child(1),
+.choices__col--left .choice:nth-child(3) { margin-left: 12%; }
+.choices__col--left .choice:nth-child(2) { margin-left: 0; }
+/* 右列阶梯：4 偏左、5 居中、6 偏右 */
+.choices__col--right { align-items: flex-end; }
+.choices__col--right .choice:nth-child(1) { margin-right: 24%; }
+.choices__col--right .choice:nth-child(2) { margin-right: 12%; }
+.choices__col--right .choice:nth-child(3) { margin-right: 0; }
+
 .choice {
-    padding: 14px 20px;
-    background: var(--bg-topbar);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text);
-    font-size: 15px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    /* 高度按素材比例 379:102 由宽度换算，避免拉伸变形 */
+    aspect-ratio: 379 / 102;
+    /* 素材 379x102，有效内容 x[12..366] y[6..95] → 内边距按留白比例留出 */
+    padding: 0 calc(34px * var(--choice-scale, 1));
+    background: url("../css/img/ChoiceBg.png") center center / 100% 100% no-repeat;
+    border: none;
+    border-radius: 0;
+    color: #e8e8e8;
+    font-size: calc(14px * var(--choice-scale, 1));
     font-family: inherit;
+    letter-spacing: 0.04em;
     cursor: pointer;
     text-align: center;
-    transition: background 0.15s, border-color 0.15s, transform 0.15s;
-    backdrop-filter: blur(6px);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+    transition: filter 0.15s, transform 0.15s;
 }
 .choice:hover {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+    filter: brightness(1.25);
     transform: translateY(-2px);
+}
+.choice:active { transform: translateY(0); }
+
+/* 选项框左侧图标（Readed.png，仅作图标使用）：
+ * 绝对定位固定在选项框偏左位置，不随文字长度移动。 */
+.choice__icon {
+    position: absolute;
+    left: calc(34px * var(--choice-scale, 1));
+    top: 50%;
+    transform: translateY(-50%);
+    width: calc(22px * var(--choice-scale, 1));
+    height: calc(22px * var(--choice-scale, 1));
+    background: url("../css/img/Readed.png") center center / contain no-repeat;
+    pointer-events: none;
 }
 
 /* ===== 顶部信息条 ===== */
@@ -274,7 +394,7 @@
 /* ===== 模态框（复用编辑器样式并微调） ===== */
 .modal {
     position: fixed; inset: 0;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.72);
     display: flex; align-items: center; justify-content: center;
     z-index: 100;
     backdrop-filter: blur(4px);
@@ -284,23 +404,28 @@
     width: min(560px, 92vw);
     max-height: 80vh;
     display: flex; flex-direction: column;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(24,24,24,0.98) 0%, rgba(10,10,10,0.98) 100%);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
     box-shadow: var(--shadow);
 }
 .modal__head {
     padding: 14px 18px;
     display: flex; align-items: center; justify-content: space-between;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--accent-line);
+    background: linear-gradient(90deg, var(--accent-soft), transparent);
 }
-.modal__head h3 { margin: 0; font-size: 15px; }
+.modal__head h3 {
+    margin: 0; font-size: 15px;
+    letter-spacing: 0.12em;
+    color: var(--text);
+}
 .modal__close {
     background: transparent; border: none;
     color: var(--text-muted); cursor: pointer;
     font-size: 22px; line-height: 1; padding: 0 6px;
 }
-.modal__close:hover { color: var(--text); }
+.modal__close:hover { color: var(--accent); }
 .modal__body { padding: 14px 18px; flex: 1; overflow-y: auto; }
 .modal__foot {
     padding: 10px 18px;
@@ -308,17 +433,69 @@
     border-top: 1px solid var(--border);
 }
 
+/* ===== 历史回看（对话回看）=====
+ * 还原游戏表现：整体为黑色半透明遮罩，覆盖整个画面。
+ * 对话文字显示区域宽度与背景图中间部分相当（--bg-main-w），水平居中。
+ * 姓名为红色、普通文本为白色、选项文本为金色。
+ */
+#historyModal {
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: none;
+    align-items: stretch;
+    justify-content: center;
+}
+#historyModal .modal__box {
+    width: var(--bg-main-w, 92%);
+    max-width: none;
+    max-height: none;
+    height: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+#historyModal .modal__head {
+    padding: 18px 4px 12px;
+    border-bottom: 1px solid rgba(200, 53, 43, 0.5);
+    background: transparent;
+}
+#historyModal .modal__head h3 {
+    font-size: 16px;
+    letter-spacing: 0.18em;
+    color: #e8e8e8;
+}
+#historyModal .modal__close { color: #b9b9b9; }
+#historyModal .modal__close:hover { color: var(--accent); }
+#historyModal .modal__body {
+    padding: 16px 4px 24px;
+    overflow-y: auto;
+}
+
 /* 历史列表 */
 .history-list, .save-list { list-style: none; margin: 0; padding: 0; }
 .history-list li {
-    padding: 8px 4px;
-    border-bottom: 1px solid var(--border);
-    font-size: 13px;
-    color: var(--text-soft);
-    line-height: 1.6;
+    padding: 8px 0;
+    margin-bottom: 4px;
+    border-left: none;
+    background: transparent;
+    /* 字号与对话框文本一致，随窗口等比缩放 */
+    font-size: calc(20px * var(--dialog-scale, 1));
+    color: #ffffff;
+    line-height: 1.8;
 }
-.history-list li:last-child { border-bottom: none; }
-.history-list .h-speaker { color: var(--accent); font-weight: 600; margin-right: 6px; }
+.history-list li:last-child { margin-bottom: 0; }
+.history-list .h-speaker {
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 10px;
+    letter-spacing: 0.06em;
+}
+/* 选项文本：金色 */
+.history-list .h-choice {
+    color: #d8b45a;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
 
 /* 存档槽 */
 .save-slot {

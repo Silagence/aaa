@@ -72,6 +72,11 @@
         // 内置素材 src 形如 bg/x.png；用户素材 src 形如 uploads/12/bg/202609/xxx.png
         return /^(assets|uploads)\//.test(asset.src) ? asset.src : 'assets/' + asset.src;
     }
+    // 站点根路径（带结尾斜杠），用于拼接内置素材地址
+    function siteBase() {
+        var ctx = window.DRAMATOOL_CTX || {};
+        return (ctx.baseUrl || '/').replace(/\/+$/, '') + '/';
+    }
     // 文本颜色白名单（需求 6.3）：仅接受 #rgb/#rrggbb/#rrggbbaa 与常见颜色关键字，防样式注入
     var COLOR_KEYWORDS = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple',
         'pink', 'brown', 'black', 'white', 'gray', 'grey', 'gold', 'silver'];
@@ -264,17 +269,84 @@
     }
 
     // ============ 节点处理器 ============
+    // 背景两侧补边素材：背景图 contain 后两侧留白用它填满（左 BackGround_Other、右 BackGround_Other2）
+    var BG_SIDE_FILL_L = 'assets/css/img/BackGround_Other.png';
+    var BG_SIDE_FILL_R = 'assets/css/img/BackGround_Other2.png';
+    var bgFillL = null;         // 左补边 Image（用于取原始尺寸）
+    var bgFillR = null;         // 右补边 Image
+    var bgMain = null;          // 当前背景图 Image（用于取原始尺寸）
+    var bgMainSrc = '';         // 当前背景图地址，避免重复加载
+
+    // 计算并应用三层背景的尺寸与位置：
+    //   背景图 contain 居中；两侧补边高度撑满舞台，宽度取 max(留白宽度, 补边原始宽度)。
+    //   定位以「背景图边缘」为基准，而非容器边缘：
+    //     - 左补边：右边缘对齐背景图左边缘（x = gap），宽度不足时左侧超出被裁 → 保留右侧灰色；
+    //     - 右补边：左边缘对齐背景图右边缘（x = W - gap），宽度不足时右侧超出被裁 → 保留左侧灰色。
+    //   窗口过宽（留白 > 补边原始宽度）→ 补边被拉伸填满留白；
+    //   窗口过窄（留白 < 补边原始宽度）→ 补边保持原始宽度，裁掉远离背景图的一侧。
+    function layoutBg() {
+        var bg = $('bgLayer');
+        if (!bg || !bgMain || !bgMain.naturalWidth) return;
+        var W = bg.clientWidth, H = bg.clientHeight;
+        if (!W || !H) return;
+        // 背景图 contain 后的显示宽度
+        var scale = Math.min(W / bgMain.naturalWidth, H / bgMain.naturalHeight);
+        var mainW = bgMain.naturalWidth * scale;
+        var gap = Math.max(0, (W - mainW) / 2);   // 单侧留白宽度
+        // 补边按高度撑满时的原始显示宽度
+        function fillW(img) {
+            if (!img || !img.naturalWidth || !img.naturalHeight) return gap;
+            return img.naturalWidth * (H / img.naturalHeight);
+        }
+        var wL = Math.max(gap, fillW(bgFillL));
+        var wR = Math.max(gap, fillW(bgFillR));
+        // 左补边右边缘对齐 x=gap；右补边左边缘对齐 x=W-gap
+        var posL = gap - wL;
+        var posR = W - gap;
+        bg.style.backgroundSize = 'contain, ' + wL + 'px 100%, ' + wR + 'px 100%';
+        bg.style.backgroundPosition = 'center center, ' + posL + 'px center, ' + posR + 'px center';
+        // 暴露背景图显示宽度，供对话框等元素对齐背景图中间部分
+        document.documentElement.style.setProperty('--bg-main-w', mainW + 'px');
+        // 对话框缩放系数：以 TalkBox.png 整张素材宽度 1024 为基准
+        // （.dialog 元素盒保持 1024:194 整图比例，素材按 100% 100% 铺满），
+        // 供姓名栏、对话文本等内部元素按比例缩放（字号、内边距、偏移）。
+        document.documentElement.style.setProperty('--dialog-scale', (mainW / 1024).toFixed(4));
+        // 选项缩放系数：以 ChoiceBg.png 素材宽度 379 为基准，
+        // 使选项框随窗口（背景图显示宽度）等比缩放，字号/图标/内边距同步缩放。
+        document.documentElement.style.setProperty('--choice-scale', (mainW / 1024).toFixed(4));
+        // 对话框实际高度（含底部 4% 间距），供选项层在「排除对话框后的区域」内垂直居中
+        var dlg = $('dialog');
+        var dlgH = dlg && !dlg.hidden ? dlg.getBoundingClientRect().height : 0;
+        document.documentElement.style.setProperty('--dialog-h', (dlgH + H * 0.04) + 'px');
+    }
+
     function applyBg(node) {
         var a = resolveAsset('bg', node.ref);
         var bg = $('bgLayer');
         if (!a) return;
         var src = assetSrc(a);
+        var fillL = siteBase() + BG_SIDE_FILL_L;
+        var fillR = siteBase() + BG_SIDE_FILL_R;
+        // 三层背景：上层为背景图（contain 居中），中层为左补边（贴左），下层为右补边（贴右）
+        var layers = 'url("' + src + '"), url("' + fillL + '"), url("' + fillR + '")';
+        // 预加载补边素材（只需一次），用于取原始尺寸
+        if (!bgFillL) { bgFillL = new Image(); bgFillL.onload = layoutBg; bgFillL.src = fillL; }
+        if (!bgFillR) { bgFillR = new Image(); bgFillR.onload = layoutBg; bgFillR.src = fillR; }
+        // 预加载背景图，加载完成后按原始比例计算补边尺寸
+        if (bgMainSrc !== src) {
+            bgMainSrc = src;
+            bgMain = new Image();
+            bgMain.onload = layoutBg;
+            bgMain.src = src;
+        }
         if (node.transition === 'none') {
-            bg.style.backgroundImage = 'url("' + src + '")';
+            bg.style.backgroundImage = layers;
+            layoutBg();
         } else {
             bg.classList.add('is-fading');
             setTimeout(function () {
-                bg.style.backgroundImage = 'url("' + src + '")';
+                bg.style.backgroundImage = layers;
+                layoutBg();
                 setTimeout(function () { bg.classList.remove('is-fading'); }, 50);
             }, 300);
         }
@@ -576,18 +648,25 @@
     }
 
     // ============ 选项 ============
+    // 布局：选项分布在画面两侧，左列自上而下 1/2/3（折线），右列 4/5/6（阶梯），最多 6 项。
     function showChoices(node) {
         isWaitingChoice = true;
         var box = $('choices');
-        box.innerHTML = '';
+        var colL = $('choicesLeft');
+        var colR = $('choicesRight');
+        colL.innerHTML = '';
+        colR.innerHTML = '';
         box.hidden = false;
-        (node.options || []).forEach(function (opt, i) {
+        var opts = (node.options || []).slice(0, 6);
+        opts.forEach(function (opt, i) {
             var b = el('button', 'choice');
-            b.textContent = opt.text || ('选项 ' + (i + 1));
+            // 左侧装饰图标（Readed.png，仅作图标使用，固定在选项框偏左位置）
+            b.appendChild(el('span', 'choice__icon'));
+            b.appendChild(document.createTextNode(opt.text || ('选项 ' + (i + 1))));
             b.addEventListener('click', function () { chooseOption(opt); });
-            box.appendChild(b);
+            (i < 3 ? colL : colR).appendChild(b);
         });
-        if (!node.options || !node.options.length) {
+        if (!opts.length) {
             // 空选项视为结束
             isWaitingChoice = false;
             showEnding();
@@ -596,11 +675,14 @@
     function hideChoices() {
         isWaitingChoice = false;
         $('choices').hidden = true;
-        $('choices').innerHTML = '';
+        $('choicesLeft').innerHTML = '';
+        $('choicesRight').innerHTML = '';
     }
     function chooseOption(opt) {
         isWaitingChoice = false;
         hideChoices();
+        // 记录所选选项，供历史回看以金色文本展示
+        history.push({ speaker: '', text: opt.text || '', choice: true });
         if (opt.next && sceneMap[opt.next]) {
             enterScene(opt.next);
         } else {
@@ -690,6 +772,10 @@
         }
         switch (e.key) {
             case ' ':
+                // 长按空格快进：按下即开始快进，松开（keyup）停止
+                e.preventDefault();
+                if (!isSkipping) startSkipping();
+                break;
             case 'Enter':
             case 'ArrowRight':
                 e.preventDefault(); advance(); break;
@@ -701,16 +787,16 @@
             case 'o': case 'O': if ($('btnLoad')) openLoad(); break;
             case 'Escape': openSettings(); break;
         }
-        if (e.ctrlKey && !isSkipping) { startSkipping(); }
     }
     function onKeyUp(e) {
-        if (e.key === 'Control' && isSkipping) stopSkipping();
+        // 松开空格停止快进
+        if (e.key === ' ' && isSkipping) stopSkipping();
     }
     function startSkipping() {
         isSkipping = true;
         $('btnSkip').classList.add('is-active');
         if (isTyping) typeStep();
-        // 需求 4.3.2：按住 Ctrl 快进（打字机瞬显，自动推进，遇选项停止）
+        // 需求 4.3.2：长按空格 / 长按鼠标左键快进（打字机瞬显，自动推进，遇选项停止）
         skipTick();
     }
     function stopSkipping() {
@@ -815,7 +901,10 @@
         if (!history.length) list.appendChild(el('li', '', '暂无对话'));
         history.forEach(function (h) {
             var li = el('li');
-            if (h.speaker) {
+            if (h.choice) {
+                // 选项文本：金色
+                li.innerHTML = '<span class="h-choice">' + escapeHtml(h.text) + '</span>';
+            } else if (h.speaker) {
                 li.innerHTML = '<span class="h-speaker">' + escapeHtml(h.speaker) + '</span>' + escapeHtml(h.text);
             } else {
                 li.textContent = h.text;
@@ -999,15 +1088,44 @@
 
     // ============ 绑定 ============
     function bind() {
-        // 舞台点击推进
-        $('stage').addEventListener('click', function (e) {
-            if (isModalOpen()) return;
-            if (e.target.closest('.choices')) return; // 选项自己处理
-            if (e.target.closest('.topinfo')) return;
+        // 舞台：短按左键推进，长按左键快进
+        var stage = $('stage');
+        var pressTimer = null;      // 长按判定定时器
+        var longPressed = false;    // 本次按下是否已进入长按快进
+        var LONG_PRESS_MS = 350;    // 长按判定阈值（毫秒）
+        function isStageTarget(e) {
+            if (isModalOpen()) return false;
+            if (e.target.closest('.choices')) return false; // 选项自己处理
+            if (e.target.closest('.topinfo')) return false;
+            return true;
+        }
+        stage.addEventListener('mousedown', function (e) {
+            if (e.button !== 0) return;          // 仅左键
+            if (!isStageTarget(e)) return;
+            longPressed = false;
+            clearTimeout(pressTimer);
+            pressTimer = setTimeout(function () {
+                longPressed = true;
+                startSkipping();
+            }, LONG_PRESS_MS);
+        });
+        // 松开 / 移出舞台：结束长按快进
+        function endPress() {
+            clearTimeout(pressTimer);
+            if (longPressed) { stopSkipping(); longPressed = false; }
+        }
+        stage.addEventListener('mouseup', endPress);
+        stage.addEventListener('mouseleave', endPress);
+        // 短按（未触发长按）时推进
+        stage.addEventListener('click', function (e) {
+            if (!isStageTarget(e)) return;
+            if (longPressed) { longPressed = false; return; } // 长按已快进，忽略本次点击
             advance();
         });
         document.addEventListener('keydown', onKey);
         document.addEventListener('keyup', onKeyUp);
+        // 窗口尺寸变化时重算背景补边尺寸
+        window.addEventListener('resize', layoutBg);
 
         $('btnAuto').addEventListener('click', toggleAuto);
         $('btnSkip').addEventListener('mousedown', startSkipping);

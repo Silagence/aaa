@@ -34,8 +34,11 @@
             <div class="dialog__click-hint" id="clickHint">▼</div>
         </div>
 
-        <!-- 选项层 -->
-        <div class="choices" id="choices" hidden></div>
+        <!-- 选项层：左右两列，左列 1/2/3、右列 4/5/6（最多 6 项） -->
+        <div class="choices" id="choices" hidden>
+            <div class="choices__col choices__col--left" id="choicesLeft"></div>
+            <div class="choices__col choices__col--right" id="choicesRight"></div>
+        </div>
 
         <!-- 顶部信息条 -->
         <div class="topinfo" id="topInfo">
@@ -43,7 +46,7 @@
             <span class="topinfo__right">
                 <span id="sceneTag" class="tag"></span>
                 <button class="icon-btn" id="btnAuto" title="自动播放 (A)" type="button">▶ 自动</button>
-                <button class="icon-btn" id="btnSkip" title="快进 (Ctrl 按住)" type="button">⏭ 快进</button>
+                <button class="icon-btn" id="btnSkip" title="快进 (长按空格 / 长按左键)" type="button">⏭ 快进</button>
                 <button class="icon-btn" id="btnHistory" title="历史对话 (L)" type="button">📜 历史</button>
                 <button class="icon-btn" id="btnSave" title="存档 (S)" type="button">💾 存档</button>
                 <button class="icon-btn" id="btnLoad" title="读档 (O)" type="button">📂 读档</button>
